@@ -25,10 +25,44 @@ static struct
 
 /* -------------------------------------------------------------------------------------------------------------- */
 
+static void cmd_repository_add_activate(GtkAction *action, gpointer user)
+{
+	if(action == NULL)
+	{
+		/* Trickery-pokery to contain the construction of this action to the same function. "Interesting". */
+		GtkAction	**me = (GtkAction **) user;
+
+		*me = gtk_action_new("repository-add", _("Add..."), _("Add a new repository based on a filesystem location."), GTK_STOCK_ADD);
+		return;
+	}
+	printf("time to add!\n");
+}
+
+static void cmd_repository_add_from_document_activate(GtkAction *action, gpointer user)
+{
+	if(action == NULL)
+	{
+		GtkAction	**me = (GtkAction **) user;
+		*me = gtk_action_new("repository-add-from-document", _("Add from Document"), _("Add a new repository from the current document's location."), GTK_STOCK_ADD);
+		return;
+	}
+	printf("time to add from doc!\n");
+}
+
 void init_commands(GtkAction **actions)
 {
-	actions[CMD_ADD_REPOSITORY] = gtk_action_new("repository-add", _("Add..."), _("Add a new repository based on a filesystem location."), GTK_STOCK_ADD);
-	actions[CMD_ADD_REPOSITORY_FROM_DOCUMENT] = gtk_action_new("repository-add-from-document", _("Add from Document"), _("Add a new repository from the current document's location."), GTK_STOCK_ADD);
+	typedef void (*ActivateOrCreate)(GtkAction *action, gpointer user);
+	const ActivateOrCreate funcs[] = {
+		cmd_repository_add_activate,
+		cmd_repository_add_from_document_activate,
+	};
+	size_t	i;
+
+	for(i = 0; i < sizeof funcs / sizeof *funcs; i++)
+	{
+		funcs[i](NULL, &actions[i]);
+		g_signal_connect(G_OBJECT(actions[i]), "activate", G_CALLBACK(funcs[i]), NULL);
+	}
 }
 
 /* -------------------------------------------------------------------------------------------------------------- */
@@ -113,10 +147,10 @@ static void evt_tree_button_press(GtkWidget *wid, GdkEventButton *evt, gpointer 
 		const gint	*indices = gtk_tree_path_get_indices_with_depth(path, &depth);
 
 		if(indices != NULL)
-			printf("click is at depth %d\n", depth);
-		if(depth == 1 && indices[0] == 0)
-			menu_popup_repositories(evt);
-
+		{
+			if(depth == 1 && indices[0] == 0)
+				menu_popup_repositories(evt);
+		}
 		gtk_tree_path_free(path);
 	}
 }
