@@ -67,9 +67,41 @@ GtkTreeModel * tree_model_new(void)
 	return GTK_TREE_MODEL(ts);
 }
 
-static void evt_tree_button_press(GtkWidget *wid, GdkEvent *evt, gpointer user)
+static void menu_popup_repositories(GdkEventButton *evt)
 {
-	printf("button press!\n");
+	GtkWidget	*menu;
+	GtkWidget	*add_repo, *add_repo_from;
+
+	menu = gtk_menu_new();
+	add_repo = gtk_menu_item_new_with_label(_("Add..."));
+	gtk_menu_shell_append(GTK_MENU_SHELL(menu), add_repo);
+	add_repo_from = gtk_menu_item_new_with_label(_("Add from Current Document"));
+	gtk_menu_shell_append(GTK_MENU_SHELL(menu), add_repo_from);
+	gtk_widget_show_all(menu);
+
+	gtk_menu_popup(GTK_MENU(menu), NULL, NULL, NULL, NULL, evt->button, evt->time);
+}
+
+static void evt_tree_button_press(GtkWidget *wid, GdkEventButton *evt, gpointer user)
+{
+	GtkTreePath	*path = NULL;
+
+	if(evt->button != 3)
+		return;
+
+	gtk_tree_view_get_path_at_pos(GTK_TREE_VIEW(wid), evt->x, evt->y, &path, NULL, NULL, NULL);
+	if(path != NULL)
+	{
+		gint		depth;
+		const gint	*indices = gtk_tree_path_get_indices_with_depth(path, &depth);
+
+		if(indices != NULL)
+			printf("click is at depth %d\n", depth);
+		if(depth == 1 && indices[0] == 0)
+			menu_popup_repositories(evt);
+
+		gtk_tree_path_free(path);
+	}
 }
 
 GtkWidget * tree_view_new(GtkTreeModel *model)
