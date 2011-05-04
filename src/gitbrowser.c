@@ -8,11 +8,28 @@ PLUGIN_SET_INFO("Git Browser",
                 "1.0",
                 "Emil Brink <emil@obsession.se>")
 
+enum
+{
+	CMD_ADD_REPOSITORY = 0,
+	CMD_ADD_REPOSITORY_FROM_DOCUMENT,
+
+	NUM_COMMANDS
+};
+
 static struct
 {
 	GtkTreeModel	*model;
 	GtkWidget	*view;
+	GtkAction	*actions[NUM_COMMANDS];
 } gitbrowser;
+
+/* -------------------------------------------------------------------------------------------------------------- */
+
+void init_commands(GtkAction **actions)
+{
+	actions[CMD_ADD_REPOSITORY] = gtk_action_new("repository-add", _("Add..."), _("Add a new repository based on a filesystem location."), GTK_STOCK_ADD);
+	actions[CMD_ADD_REPOSITORY_FROM_DOCUMENT] = gtk_action_new("repository-add-from-document", _("Add from Document"), _("Add a new repository from the current document's location."), GTK_STOCK_ADD);
+}
 
 /* -------------------------------------------------------------------------------------------------------------- */
 
@@ -69,14 +86,14 @@ GtkTreeModel * tree_model_new(void)
 
 static void menu_popup_repositories(GdkEventButton *evt)
 {
-	GtkWidget	*menu;
-	GtkWidget	*add_repo, *add_repo_from;
+	GtkWidget	*menu, *item;
 
 	menu = gtk_menu_new();
-	add_repo = gtk_menu_item_new_with_label(_("Add..."));
-	gtk_menu_shell_append(GTK_MENU_SHELL(menu), add_repo);
-	add_repo_from = gtk_menu_item_new_with_label(_("Add from Current Document"));
-	gtk_menu_shell_append(GTK_MENU_SHELL(menu), add_repo_from);
+
+	item = gtk_action_create_menu_item(gitbrowser.actions[CMD_ADD_REPOSITORY]);
+	gtk_menu_shell_append(GTK_MENU_SHELL(menu), item);
+	item = gtk_action_create_menu_item(gitbrowser.actions[CMD_ADD_REPOSITORY_FROM_DOCUMENT]);
+	gtk_menu_shell_append(GTK_MENU_SHELL(menu), item);
 	gtk_widget_show_all(menu);
 
 	gtk_menu_popup(GTK_MENU(menu), NULL, NULL, NULL, NULL, evt->button, evt->time);
@@ -127,6 +144,8 @@ GtkWidget * tree_view_new(GtkTreeModel *model)
 
 void plugin_init(GeanyData *geany_data)
 {
+	init_commands(gitbrowser.actions);
+
 	gitbrowser.model = tree_model_new();
 	gitbrowser.view = tree_view_new(gitbrowser.model);
 
