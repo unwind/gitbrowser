@@ -1,5 +1,11 @@
 
+#include <string.h>
+
 #include "geanyplugin.h"
+
+GeanyPlugin         *geany_plugin;
+GeanyData           *geany_data;
+GeanyFunctions      *geany_functions;
 
 PLUGIN_VERSION_CHECK(147)
 
@@ -25,28 +31,51 @@ static struct
 
 /* -------------------------------------------------------------------------------------------------------------- */
 
+/* Trickery to make the same function work both as the signal-handler, and for creating the actual GtkAction. Too weird? */
+#define	CMD_INIT(n, l, tt, s)	if(action == NULL) { GtkAction **me = (GtkAction **) user; *me = gtk_action_new(n, _(l), _(tt), s); return; }
+
 static void cmd_repository_add_activate(GtkAction *action, gpointer user)
 {
-	if(action == NULL)
-	{
-		/* Trickery-pokery to contain the construction of this action to the same function. "Interesting". */
-		GtkAction	**me = (GtkAction **) user;
+	CMD_INIT("repository-add", _("Add..."), _("Add a new repository based on a filesystem location."), GTK_STOCK_ADD)
 
-		*me = gtk_action_new("repository-add", _("Add..."), _("Add a new repository based on a filesystem location."), GTK_STOCK_ADD);
-		return;
-	}
 	printf("time to add!\n");
 }
 
 static void cmd_repository_add_from_document_activate(GtkAction *action, gpointer user)
 {
-	if(action == NULL)
+	GeanyDocument	*doc;
+
+	CMD_INIT("repository-add-from-document", _("Add from Document"), _("Add a new repository from the current document's location."), GTK_STOCK_ADD)
+
+	if((doc = document_get_current()) != NULL)
 	{
-		GtkAction	**me = (GtkAction **) user;
-		*me = gtk_action_new("repository-add-from-document", _("Add from Document"), _("Add a new repository from the current document's location."), GTK_STOCK_ADD);
-		return;
+		GString	*tmp = g_string_new(doc->real_path);
+		gchar	*slash;
+
+		printf("current document is '%s'\n", doc->real_path);
+		/* Step up the directory hierarchy, looking for a ".git" directory that marks the repo's root. */
+		while(TRUE)
+		{
+			if((slash = strrchr(tmp->str, G_DIR_SEPARATOR)) != NULL)
+			{
+				gchar	*git;
+				*slash = '\0';	/* Stamp out the slash, truncating the path. */
+				git = g_build_filename(tmp->str, ".git", NULL);
+				if(g_file_test(git, G_FILE_TEST_IS_DIR))
+				{
+					gchar	*name = strrchr(tmp->str, G_DIR_SEPARATOR);
+					if(name != NULL)
+					{
+						printf("found repository (%s) root in '%s'\n", name + 1, git);
+						tmp->str[0] = '\0';
+					}
+				}
+				g_free(git);
+			}
+			else
+				break;
+		}
 	}
-	printf("time to add from doc!\n");
 }
 
 void init_commands(GtkAction **actions)
