@@ -1,20 +1,20 @@
 #
-#
+# Ultra-trivial Makefile.
 #
 
-
-CFLAGS=`pkg-config --cflags geany` -fPIC
+CFLAGS=`pkg-config --cflags geany` -fPIC -Wall -pedantic
+LDLIBS=`pkg-config --libs geany`
 
 .PHONY:		clean
 
-
+# --------------------------------------------------------------
 
 gitbrowser.so:	gitbrowser.o
-		gcc -shared -o $@ $<
+		gcc -shared -o $@ $(LDLIBS) $<
 
 gitbrowser.o:	gitbrowser.c
 
-
+# --------------------------------------------------------------
 
 clean:
 	rm -f *.o *.so
