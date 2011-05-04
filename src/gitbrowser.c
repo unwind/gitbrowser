@@ -82,9 +82,9 @@ GtkWidget * tree_view_new(GtkTreeModel *model)
 
 	cr = gtk_cell_renderer_text_new();
 	vc = gtk_tree_view_column_new_with_attributes("(string)", cr, "text", 0, NULL);
-	gtk_tree_view_append_column(GTK_TREE_VIEW(gitbrowser.view), vc);
+	gtk_tree_view_append_column(GTK_TREE_VIEW(view), vc);
 
-/*	gtk_tree_view_set_headers_visible(GTK_TREE_VIEW(gitbrowser.view), FALSE);*/
+	gtk_tree_view_set_headers_visible(GTK_TREE_VIEW(gitbrowser.view), FALSE);
 
 	g_signal_connect(G_OBJECT(view), "button_press_event", G_CALLBACK(evt_tree_button_press), NULL);
 
