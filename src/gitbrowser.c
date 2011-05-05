@@ -31,6 +31,11 @@ static struct
 
 /* -------------------------------------------------------------------------------------------------------------- */
 
+gboolean	tree_model_find_repository(GtkTreeModel *model, const gchar *root_path, GtkTreeIter *iter);
+void		tree_model_build_repository(GtkTreeModel *model, GtkTreeIter *root, const gchar *root_path);
+
+/* -------------------------------------------------------------------------------------------------------------- */
+
 /* Trickery to make the same function work both as the signal-handler, and for creating the actual GtkAction. Too weird? */
 #define	CMD_INIT(n, l, tt, s)	if(action == NULL) { GtkAction **me = (GtkAction **) user; *me = gtk_action_new(n, _(l), _(tt), s); return; }
 
@@ -50,23 +55,30 @@ static void cmd_repository_add_from_document_activate(GtkAction *action, gpointe
 	if((doc = document_get_current()) != NULL)
 	{
 		GString	*tmp = g_string_new(doc->real_path);
-		gchar	*slash;
 
 		printf("current document is '%s'\n", doc->real_path);
-		/* Step up the directory hierarchy, looking for a ".git" directory that marks the repo's root. */
+		/* Step up through the directory hierarchy, looking for a ".git" directory that marks the repo's root. */
 		while(TRUE)
 		{
+			gchar	*slash, *git, *name;
+
 			if((slash = strrchr(tmp->str, G_DIR_SEPARATOR)) != NULL)
 			{
-				gchar	*git;
 				*slash = '\0';	/* Stamp out the slash, truncating the path. */
 				git = g_build_filename(tmp->str, ".git", NULL);
 				if(g_file_test(git, G_FILE_TEST_IS_DIR))
 				{
-					gchar	*name = strrchr(tmp->str, G_DIR_SEPARATOR);
+					name = strrchr(tmp->str, G_DIR_SEPARATOR);
 					if(name != NULL)
 					{
+						GtkTreeIter	iter;
+
 						printf("found repository (%s) root in '%s'\n", name + 1, git);
+						printf(" repo root is '%s'\n", tmp->str);
+						if(!tree_model_find_repository(gitbrowser.model, tmp->str, &iter))
+						{
+							tree_model_build_repository(gitbrowser.model, NULL, tmp->str);
+						}
 						tmp->str[0] = '\0';
 					}
 				}
@@ -140,11 +152,53 @@ GtkTreeModel * tree_model_new(void)
 	GtkTreeStore	*ts;
 	GtkTreeIter	iter;
 
-	ts = gtk_tree_store_new(1, G_TYPE_STRING);
+	ts = gtk_tree_store_new(2, G_TYPE_STRING, G_TYPE_STRING);
 	gtk_tree_store_append(ts, &iter, NULL);
-	gtk_tree_store_set(ts, &iter, 0, _("Repositories (Right-click to add)"), -1);
+	gtk_tree_store_set(ts, &iter, 0, _("Repositories (Right-click to add)"), 1, NULL,-1);
 
 	return GTK_TREE_MODEL(ts);
+}
+
+/* Look up a repository, by searching for a node immediately under the root that has the given path as its data. */
+gboolean tree_model_find_repository(GtkTreeModel *model, const gchar *root_path, GtkTreeIter *iter)
+{
+	GtkTreeIter	root;
+	gboolean	found = FALSE;
+
+	if(gtk_tree_model_get_iter_first(model, &root))
+	{
+		if(gtk_tree_model_iter_children(model, iter, &root))
+		{
+			gchar	*data;
+
+			do
+			{
+				gtk_tree_model_get(model, iter, 1, &data, -1);
+				if(data != NULL)
+				{
+					found = strcmp(data, root_path) == 0;
+					g_free(data);
+				}
+			} while(gtk_tree_model_iter_next(model, iter));
+		}
+	}
+	return found;
+}
+
+void tree_model_build_repository(GtkTreeModel *model, GtkTreeIter *root, const gchar *root_path)
+{
+	GtkTreeIter	new;
+
+	if(root == NULL)
+	{
+		GtkTreeIter	iter, repo;
+
+		if(gtk_tree_model_get_iter_first(model, &iter))
+		{
+			root = &new;
+			gtk_tree_store_append(GTK_TREE_STORE(model), &repo, root);
+		}
+	}
 }
 
 static void menu_popup_repositories(GdkEventButton *evt)
