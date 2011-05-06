@@ -245,7 +245,6 @@ void tree_model_build_repository(GtkTreeModel *model, GtkTreeIter *repo, const g
 	/* Now list the repository, and build a tree representation. Easy-peasy, right? */
 	if(subprocess_run(root_path, git_ls_files, NULL, &git_stdout, &git_stderr))
 	{
-		timer = g_timer_new();
 		tree_model_build_populate(model, git_stdout, repo);
 		g_free(git_stdout);
 		g_free(git_stderr);
@@ -343,12 +342,12 @@ static void menu_popup_repositories(GdkEventButton *evt)
 	gtk_menu_popup(GTK_MENU(menu), NULL, NULL, NULL, NULL, evt->button, evt->time);
 }
 
-static void evt_tree_button_press(GtkWidget *wid, GdkEventButton *evt, gpointer user)
+static gboolean evt_tree_button_press(GtkWidget *wid, GdkEventButton *evt, gpointer user)
 {
 	GtkTreePath	*path = NULL;
 
 	if(evt->button != 3)
-		return;
+		return FALSE;
 
 	gtk_tree_view_get_path_at_pos(GTK_TREE_VIEW(wid), evt->x, evt->y, &path, NULL, NULL, NULL);
 	if(path != NULL)
@@ -363,6 +362,7 @@ static void evt_tree_button_press(GtkWidget *wid, GdkEventButton *evt, gpointer 
 		}
 		gtk_tree_path_free(path);
 	}
+	return path != NULL;
 }
 
 GtkWidget * tree_view_new(GtkTreeModel *model)
