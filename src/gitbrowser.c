@@ -33,7 +33,7 @@ static struct
 	GtkTreeModel	*model;
 	GtkWidget	*view;
 	GtkAction	*actions[NUM_COMMANDS];
-	GtkTreePath	*menu_click;
+	GtkTreePath	*click_path;
 } gitbrowser;
 
 /* -------------------------------------------------------------------------------------------------------------- */
@@ -103,7 +103,7 @@ static void cmd_repository_remove(GtkAction *action, gpointer user)
 
 	CMD_INIT("repository-remove", _("Remove"), _("Removes this repository from the tree view, forgetting all about it."), GTK_STOCK_DELETE);
 
-	if(gtk_tree_model_get_iter(gitbrowser.model, &iter, gitbrowser.menu_click))
+	if(gtk_tree_model_get_iter(gitbrowser.model, &iter, gitbrowser.click_path))
 	{
 		gtk_tree_store_remove(GTK_TREE_STORE(gitbrowser.model), &iter);
 	}
@@ -113,14 +113,14 @@ static void cmd_dir_expand(GtkAction *action, gpointer user)
 {
 	CMD_INIT("dir-expand", _("Expand"), _("Expands a directory node."), NULL);
 
-	gtk_tree_view_expand_row(GTK_TREE_VIEW(gitbrowser.view), gitbrowser.menu_click, TRUE);
+	gtk_tree_view_expand_row(GTK_TREE_VIEW(gitbrowser.view), gitbrowser.click_path, TRUE);
 }
 
 static void cmd_dir_collapse(GtkAction *action, gpointer user)
 {
 	CMD_INIT("dir-collapse", _("Collapse"), _("Collapses a directory node."), NULL);
 
-	gtk_tree_view_collapse_row(GTK_TREE_VIEW(gitbrowser.view), gitbrowser.menu_click);
+	gtk_tree_view_collapse_row(GTK_TREE_VIEW(gitbrowser.view), gitbrowser.click_path);
 }
 
 static void cmd_file_open(GtkAction *action, gpointer user)
@@ -129,7 +129,7 @@ static void cmd_file_open(GtkAction *action, gpointer user)
 
 	CMD_INIT("file-open", _("Open"), _("Opens a file as a new document, or focuses the document if already opened."), GTK_STOCK_OPEN);
 
-	if(gtk_tree_model_get_iter(gitbrowser.model, &iter, gitbrowser.menu_click))
+	if(gtk_tree_model_get_iter(gitbrowser.model, &iter, gitbrowser.click_path))
 	{
 		GString	*path = g_string_sized_new(1024);
 		gchar	*component;
@@ -407,10 +407,10 @@ static void tree_model_build_traverse(GtkTreeModel *model, GNode *root, GtkTreeI
 
 static gboolean evt_menu_selection_done(GtkWidget *wid, gpointer user)
 {
-	if(gitbrowser.menu_click != NULL)
+	if(gitbrowser.click_path != NULL)
 	{
-		gtk_tree_path_free(gitbrowser.menu_click);
-		gitbrowser.menu_click = NULL;
+		gtk_tree_path_free(gitbrowser.click_path);
+		gitbrowser.click_path = NULL;
 	}
 
 	return FALSE;
@@ -472,22 +472,40 @@ static void menu_popup_file(GdkEventButton *evt)
 
 static gboolean evt_tree_button_press(GtkWidget *wid, GdkEventButton *evt, gpointer user)
 {
-	if(evt->button != 3)
-		return FALSE;
-
-	if(gitbrowser.menu_click != NULL)
+	if(gitbrowser.click_path != NULL)
 	{
-		gtk_tree_path_free(gitbrowser.menu_click);
-		gitbrowser.menu_click = NULL;
+		gtk_tree_path_free(gitbrowser.click_path);
+		gitbrowser.click_path = NULL;
 	}
 
-	gtk_tree_view_get_path_at_pos(GTK_TREE_VIEW(wid), evt->x, evt->y, &gitbrowser.menu_click, NULL, NULL, NULL);
-	if(gitbrowser.menu_click != NULL)
+	gtk_tree_view_get_path_at_pos(GTK_TREE_VIEW(wid), evt->x, evt->y, &gitbrowser.click_path, NULL, NULL, NULL);
+	if(gitbrowser.click_path != NULL)
 	{
 		gint		depth;
-		const gint	*indices = gtk_tree_path_get_indices_with_depth(gitbrowser.menu_click, &depth);
+		const gint	*indices = gtk_tree_path_get_indices_with_depth(gitbrowser.click_path, &depth);
+		gboolean	is_dir = FALSE;
+		GtkTreeIter	iter;
 
-		if(indices != NULL)
+		if(indices == NULL)
+			return FALSE;
+
+		if(depth >= 3)			/* Need to determine if clicked path is file or directory. */
+		{
+			if(gtk_tree_model_get_iter(gitbrowser.model, &iter, gitbrowser.click_path))
+				is_dir = gtk_tree_model_iter_has_child(gitbrowser.model, &iter);
+		}
+
+		if(evt->type == GDK_2BUTTON_PRESS && evt->button == 1 && depth >= 3)
+		{
+			if(is_dir)
+			{
+				if(!gtk_tree_view_collapse_row(GTK_TREE_VIEW(gitbrowser.view), gitbrowser.click_path))
+					gtk_tree_view_expand_row(GTK_TREE_VIEW(gitbrowser.view), gitbrowser.click_path, TRUE);
+			}
+			else
+				gtk_action_activate(gitbrowser.actions[CMD_FILE_OPEN]);
+		}
+		else if(evt->type == GDK_BUTTON_PRESS && evt->button == 3)
 		{
 			if(depth == 1 && indices[0] == 0)
 				menu_popup_repositories(evt);
@@ -495,19 +513,13 @@ static gboolean evt_tree_button_press(GtkWidget *wid, GdkEventButton *evt, gpoin
 				menu_popup_repository(evt);
 			else if(depth >= 3)
 			{
-				GtkTreeIter	iter;
-
-				/* Need to determine if clicked path is file or directory. */
-				if(gtk_tree_model_get_iter(gitbrowser.model, &iter, gitbrowser.menu_click))
-				{
-					if(gtk_tree_model_iter_has_child(gitbrowser.model, &iter))
-						menu_popup_directory(evt);
-					else
-						menu_popup_file(evt);
-				}
+				if(is_dir)
+					menu_popup_directory(evt);
+				else
+					menu_popup_file(evt);
 			}
+			return TRUE;
 		}
-		return TRUE;
 	}
 	return FALSE;
 }
