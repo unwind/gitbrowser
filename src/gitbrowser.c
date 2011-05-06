@@ -20,6 +20,11 @@ enum
 	CMD_ADD_REPOSITORY_FROM_DOCUMENT,
 	CMD_REMOVE_REPOSITORY,
 
+	CMD_DIR_EXPAND,
+	CMD_DIR_COLLAPSE,
+
+	CMD_FILE_OPEN,
+
 	NUM_COMMANDS
 };
 
@@ -104,6 +109,28 @@ static void cmd_repository_remove(GtkAction *action, gpointer user)
 	}
 }
 
+static void cmd_dir_expand(GtkAction *action, gpointer user)
+{
+	CMD_INIT("dir-expand", _("Expand"), _("Expands a directory node."), NULL);
+}
+
+static void cmd_dir_collapse(GtkAction *action, gpointer user)
+{
+	CMD_INIT("dir-collapse", _("Collapse"), _("Collapses a directory node."), NULL);
+}
+
+static void cmd_file_open(GtkAction *action, gpointer user)
+{
+	GtkTreeIter	iter;
+
+	CMD_INIT("file-open", _("Open"), _("Opens a file as a new document, or focuses the document if already opened."), GTK_STOCK_OPEN);
+
+	if(gtk_tree_model_get_iter(gitbrowser.model, &iter, gitbrowser.menu_click))
+	{
+		gtk_tree_store_remove(GTK_TREE_STORE(gitbrowser.model), &iter);
+	}
+}
+
 void init_commands(GtkAction **actions)
 {
 	typedef void (*ActivateOrCreate)(GtkAction *action, gpointer user);
@@ -111,6 +138,9 @@ void init_commands(GtkAction **actions)
 		cmd_repository_add_activate,
 		cmd_repository_add_from_document_activate,
 		cmd_repository_remove,
+		cmd_dir_expand,
+		cmd_dir_collapse,
+		cmd_file_open,
 	};
 	size_t	i;
 
@@ -392,6 +422,27 @@ static void menu_popup_repository(GdkEventButton *evt)
 	gtk_menu_popup(GTK_MENU(menu), NULL, NULL, NULL, NULL, evt->button, evt->time);
 }
 
+static void menu_popup_directory(GdkEventButton *evt)
+{
+	GtkWidget	*menu = menu_popup_create();
+
+	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_action_create_menu_item(gitbrowser.actions[CMD_DIR_EXPAND]));
+	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_action_create_menu_item(gitbrowser.actions[CMD_DIR_COLLAPSE]));
+	gtk_widget_show_all(menu);
+
+	gtk_menu_popup(GTK_MENU(menu), NULL, NULL, NULL, NULL, evt->button, evt->time);
+}
+
+static void menu_popup_file(GdkEventButton *evt)
+{
+	GtkWidget	*menu = menu_popup_create();
+
+	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_action_create_menu_item(gitbrowser.actions[CMD_FILE_OPEN]));
+	gtk_widget_show_all(menu);
+
+	gtk_menu_popup(GTK_MENU(menu), NULL, NULL, NULL, NULL, evt->button, evt->time);
+}
+
 static gboolean evt_tree_button_press(GtkWidget *wid, GdkEventButton *evt, gpointer user)
 {
 	if(evt->button != 3)
@@ -415,6 +466,19 @@ static gboolean evt_tree_button_press(GtkWidget *wid, GdkEventButton *evt, gpoin
 				menu_popup_repositories(evt);
 			else if(depth == 2)
 				menu_popup_repository(evt);
+			else if(depth >= 3)
+			{
+				GtkTreeIter	iter;
+
+				/* Need to determine if clicked path is file or directory. */
+				if(gtk_tree_model_get_iter(gitbrowser.model, &iter, gitbrowser.menu_click))
+				{
+					if(gtk_tree_model_iter_has_child(gitbrowser.model, &iter))
+						menu_popup_directory(evt);
+					else
+						menu_popup_file(evt);
+				}
+			}
 		}
 		return TRUE;
 	}
@@ -456,18 +520,6 @@ void plugin_init(GeanyData *geany_data)
 	gtk_container_add(GTK_CONTAINER(scwin), gitbrowser.view);
 	gtk_widget_show_all(scwin);
 	gtk_notebook_append_page(GTK_NOTEBOOK(geany->main_widgets->sidebar_notebook), scwin, gtk_label_new("Git Browser"));
-
-/*	if(subprocess_run("/home/emil/data/workspace/gitbrowser", get_files, NULL, &output, &error) >= 0)
-	{
-		const gchar	*iter = output;
-		gchar		line[1024];
-
-		while(iter = tok_tokenize_next_line(iter, line, sizeof line))
-			printf("'%s'\n", line);
-		g_free(output);
-		g_free(error);
-	}
-*/
 }
 
 void plugin_cleanup(void)
