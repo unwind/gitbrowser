@@ -245,11 +245,17 @@ void tree_model_build_repository(GtkTreeModel *model, GtkTreeIter *repo, const g
 	/* Now list the repository, and build a tree representation. Easy-peasy, right? */
 	if(subprocess_run(root_path, git_ls_files, NULL, &git_stdout, &git_stderr))
 	{
+		GtkTreePath	*path;
+
 		tree_model_build_populate(model, git_stdout, repo);
 		g_free(git_stdout);
 		g_free(git_stderr);
+
+		path = gtk_tree_model_get_path(model, repo);
+		gtk_tree_view_expand_to_path(GTK_TREE_VIEW(gitbrowser.view), path);
+		gtk_tree_view_set_cursor_on_cell(GTK_TREE_VIEW(gitbrowser.view), path, NULL, NULL, FALSE);
+		gtk_tree_path_free(path);
 	}
-/*	gtk_tree_view_expand_all(GTK_TREE_VIEW(gitbrowser.view));*/
 }
 
 /* Look for a child with the given text as its data; if not found it's added in the proper location and returned. */
