@@ -18,6 +18,7 @@ enum
 {
 	CMD_ADD_REPOSITORY = 0,
 	CMD_ADD_REPOSITORY_FROM_DOCUMENT,
+	CMD_REMOVE_REPOSITORY,
 
 	NUM_COMMANDS
 };
@@ -27,6 +28,7 @@ static struct
 	GtkTreeModel	*model;
 	GtkWidget	*view;
 	GtkAction	*actions[NUM_COMMANDS];
+	GtkTreePath	*menu_click;
 } gitbrowser;
 
 /* -------------------------------------------------------------------------------------------------------------- */
@@ -90,12 +92,25 @@ static void cmd_repository_add_from_document_activate(GtkAction *action, gpointe
 	}
 }
 
+static void cmd_repository_remove(GtkAction *action, gpointer user)
+{
+	GtkTreeIter	iter;
+
+	CMD_INIT("repository-remove", _("Remove"), _("Removes this repository from the tree view, forgetting all about it."), GTK_STOCK_DELETE);
+
+	if(gtk_tree_model_get_iter(gitbrowser.model, &iter, gitbrowser.menu_click))
+	{
+		gtk_tree_store_remove(GTK_TREE_STORE(gitbrowser.model), &iter);
+	}
+}
+
 void init_commands(GtkAction **actions)
 {
 	typedef void (*ActivateOrCreate)(GtkAction *action, gpointer user);
 	const ActivateOrCreate funcs[] = {
 		cmd_repository_add_activate,
 		cmd_repository_add_from_document_activate,
+		cmd_repository_remove,
 	};
 	size_t	i;
 
@@ -333,11 +348,30 @@ static void tree_model_build_traverse(GtkTreeModel *model, GNode *root, GtkTreeI
 	}
 }
 
-static void menu_popup_repositories(GdkEventButton *evt)
+static gboolean evt_menu_selection_done(GtkWidget *wid, gpointer user)
 {
-	GtkWidget	*menu, *item;
+	if(gitbrowser.menu_click != NULL)
+	{
+		gtk_tree_path_free(gitbrowser.menu_click);
+		gitbrowser.menu_click = NULL;
+	}
+
+	return FALSE;
+}
+
+/* Creates a new popup menu suitable for use in our tree, and connects the selection-done signal. */
+static GtkWidget * menu_popup_create(void)
+{
+	GtkWidget	*menu;
 
 	menu = gtk_menu_new();
+	g_signal_connect(G_OBJECT(menu), "selection_done", G_CALLBACK(evt_menu_selection_done), NULL);
+	return menu;
+}
+
+static void menu_popup_repositories(GdkEventButton *evt)
+{
+	GtkWidget	*menu = menu_popup_create(), *item;
 
 	item = gtk_action_create_menu_item(gitbrowser.actions[CMD_ADD_REPOSITORY]);
 	gtk_menu_shell_append(GTK_MENU_SHELL(menu), item);
@@ -348,27 +382,43 @@ static void menu_popup_repositories(GdkEventButton *evt)
 	gtk_menu_popup(GTK_MENU(menu), NULL, NULL, NULL, NULL, evt->button, evt->time);
 }
 
+static void menu_popup_repository(GdkEventButton *evt)
+{
+	GtkWidget	*menu = menu_popup_create();
+
+	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_action_create_menu_item(gitbrowser.actions[CMD_REMOVE_REPOSITORY]));
+	gtk_widget_show_all(menu);
+
+	gtk_menu_popup(GTK_MENU(menu), NULL, NULL, NULL, NULL, evt->button, evt->time);
+}
+
 static gboolean evt_tree_button_press(GtkWidget *wid, GdkEventButton *evt, gpointer user)
 {
-	GtkTreePath	*path = NULL;
-
 	if(evt->button != 3)
 		return FALSE;
 
-	gtk_tree_view_get_path_at_pos(GTK_TREE_VIEW(wid), evt->x, evt->y, &path, NULL, NULL, NULL);
-	if(path != NULL)
+	if(gitbrowser.menu_click != NULL)
+	{
+		gtk_tree_path_free(gitbrowser.menu_click);
+		gitbrowser.menu_click = NULL;
+	}
+
+	gtk_tree_view_get_path_at_pos(GTK_TREE_VIEW(wid), evt->x, evt->y, &gitbrowser.menu_click, NULL, NULL, NULL);
+	if(gitbrowser.menu_click != NULL)
 	{
 		gint		depth;
-		const gint	*indices = gtk_tree_path_get_indices_with_depth(path, &depth);
+		const gint	*indices = gtk_tree_path_get_indices_with_depth(gitbrowser.menu_click, &depth);
 
 		if(indices != NULL)
 		{
 			if(depth == 1 && indices[0] == 0)
 				menu_popup_repositories(evt);
+			else if(depth == 2)
+				menu_popup_repository(evt);
 		}
-		gtk_tree_path_free(path);
+		return TRUE;
 	}
-	return path != NULL;
+	return FALSE;
 }
 
 GtkWidget * tree_view_new(GtkTreeModel *model)
