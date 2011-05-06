@@ -125,13 +125,30 @@ static void cmd_dir_collapse(GtkAction *action, gpointer user)
 
 static void cmd_file_open(GtkAction *action, gpointer user)
 {
-	GtkTreeIter	iter;
+	GtkTreeIter	iter, child;
 
 	CMD_INIT("file-open", _("Open"), _("Opens a file as a new document, or focuses the document if already opened."), GTK_STOCK_OPEN);
 
 	if(gtk_tree_model_get_iter(gitbrowser.model, &iter, gitbrowser.menu_click))
 	{
-		gtk_tree_store_remove(GTK_TREE_STORE(gitbrowser.model), &iter);
+		GString	*path = g_string_sized_new(1024);
+		gchar	*component;
+
+		/* Walk towards the root, building the filename as we go. */
+		do
+		{
+			gtk_tree_model_get(gitbrowser.model, &iter, 1, &component, -1);
+			if(component != NULL)
+			{
+				if(path->len > 0)
+					g_string_prepend(path, G_DIR_SEPARATOR_S);
+				g_string_prepend(path, component);
+				g_free(component);
+			}
+			child = iter;
+		} while(gtk_tree_model_iter_parent(gitbrowser.model, &iter, &child));
+		document_open_file(path->str, FALSE, NULL, NULL);
+		g_string_free(path, TRUE);
 	}
 }
 
@@ -229,6 +246,7 @@ GtkTreeModel * tree_model_new(void)
 	GtkTreeStore	*ts;
 	GtkTreeIter	iter;
 
+	/* First column is display text, second is corresponding path (or path part). */
 	ts = gtk_tree_store_new(2, G_TYPE_STRING, G_TYPE_STRING);
 	gtk_tree_store_append(ts, &iter, NULL);
 	gtk_tree_store_set(ts, &iter, 0, _("Repositories (Right-click to add)"), 1, NULL,-1);
@@ -361,6 +379,7 @@ static void tree_model_build_traverse(GtkTreeModel *model, GNode *root, GtkTreeI
 {
 	GNode		*child;
 	GtkTreeIter	iter;
+	gchar		*dname;
 
 	/* Inner nodes. */
 	for(child = g_node_first_child(root); child != NULL; child = g_node_next_sibling(child))
@@ -369,7 +388,9 @@ static void tree_model_build_traverse(GtkTreeModel *model, GNode *root, GtkTreeI
 			continue;
 		/* We now know this is an inner node; add tree node and recurse. */
 		gtk_tree_store_append(GTK_TREE_STORE(model), &iter, parent);
-		gtk_tree_store_set(GTK_TREE_STORE(model), &iter, 0, child->data, -1);
+		dname = g_filename_display_name(child->data);
+		gtk_tree_store_set(GTK_TREE_STORE(model), &iter, 0, dname, 1, child->data,-1);
+		g_free(dname);
 		tree_model_build_traverse(model, child, &iter);
 	}
 	/* Leaves. */
@@ -378,7 +399,9 @@ static void tree_model_build_traverse(GtkTreeModel *model, GNode *root, GtkTreeI
 		if(g_node_first_child(child) != NULL)
 			continue;
 		gtk_tree_store_append(GTK_TREE_STORE(model), &iter, parent);
-		gtk_tree_store_set(GTK_TREE_STORE(model), &iter, 0, child->data, -1);
+		dname = g_filename_display_name(child->data);
+		gtk_tree_store_set(GTK_TREE_STORE(model), &iter, 0, dname, 1, child->data,-1);
+		g_free(dname);
 	}
 }
 
