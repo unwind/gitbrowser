@@ -16,9 +16,9 @@ PLUGIN_SET_INFO("Git Browser",
 
 enum
 {
-	CMD_ADD_REPOSITORY = 0,
-	CMD_ADD_REPOSITORY_FROM_DOCUMENT,
-	CMD_REMOVE_REPOSITORY,
+	CMD_REPOSITORY_ADD = 0,
+	CMD_REPOSITORY_ADD_FROM_DOCUMENT,
+	CMD_REPOSITORY_REMOVE,
 
 	CMD_DIR_EXPAND,
 	CMD_DIR_COLLAPSE,
@@ -430,9 +430,9 @@ static void menu_popup_repositories(GdkEventButton *evt)
 {
 	GtkWidget	*menu = menu_popup_create(), *item;
 
-	item = gtk_action_create_menu_item(gitbrowser.actions[CMD_ADD_REPOSITORY]);
+	item = gtk_action_create_menu_item(gitbrowser.actions[CMD_REPOSITORY_ADD]);
 	gtk_menu_shell_append(GTK_MENU_SHELL(menu), item);
-	item = gtk_action_create_menu_item(gitbrowser.actions[CMD_ADD_REPOSITORY_FROM_DOCUMENT]);
+	item = gtk_action_create_menu_item(gitbrowser.actions[CMD_REPOSITORY_ADD_FROM_DOCUMENT]);
 	gtk_menu_shell_append(GTK_MENU_SHELL(menu), item);
 	gtk_widget_show_all(menu);
 
@@ -443,7 +443,7 @@ static void menu_popup_repository(GdkEventButton *evt)
 {
 	GtkWidget	*menu = menu_popup_create();
 
-	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_action_create_menu_item(gitbrowser.actions[CMD_REMOVE_REPOSITORY]));
+	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_action_create_menu_item(gitbrowser.actions[CMD_REPOSITORY_REMOVE]));
 	gtk_widget_show_all(menu);
 
 	gtk_menu_popup(GTK_MENU(menu), NULL, NULL, NULL, NULL, evt->button, evt->time);
