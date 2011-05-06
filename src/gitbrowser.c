@@ -123,7 +123,7 @@ gboolean subprocess_run(const gchar* working_dir, gchar **argv, gchar **env, gch
 const gchar * tok_tokenize_next_line(const gchar *lines, gchar *buffer, size_t buf_size)
 {
 	if(lines == NULL || *lines == '\0' || buffer == NULL)
-		return FALSE;
+		return NULL;
 	/* Copy characters until linefeed. Don't overflow. */
 	buf_size--;
 	while(*lines != '\0')
@@ -143,6 +143,34 @@ const gchar * tok_tokenize_next_line(const gchar *lines, gchar *buffer, size_t b
 		lines++;
 	}
 	return lines;
+}
+
+/* Scans forwards through text, looking for the next separator. Terminates (!) string and returns it, or returns NULL. */
+gchar * tok_tokenize_next(gchar *text, gchar **endptr, gchar separator)
+{
+	gchar	*anchor;
+
+	if(text == NULL || *text == '\0')
+		return NULL;
+	while(*text == separator)
+		text++;
+	anchor = text;
+	while(*text && *text != separator)
+		text++;
+	if(*text == separator)
+	{
+		*text = '\0';
+		if(endptr != NULL)
+			*endptr = text + 1;
+		return anchor;
+	}
+	else if(*text == '\0')
+	{
+		if(endptr != NULL)
+			*endptr = NULL;
+		return anchor;
+	}
+	return NULL;
 }
 
 /* -------------------------------------------------------------------------------------------------------------- */
@@ -185,19 +213,118 @@ gboolean tree_model_find_repository(GtkTreeModel *model, const gchar *root_path,
 	return found;
 }
 
-void tree_model_build_repository(GtkTreeModel *model, GtkTreeIter *root, const gchar *root_path)
+static void	tree_model_build_populate(GtkTreeModel *model, gchar *lines, GtkTreeIter *parent);
+static void	tree_model_build_traverse(GtkTreeModel *model, GNode *root, GtkTreeIter *parent);
+
+void tree_model_build_repository(GtkTreeModel *model, GtkTreeIter *repo, const gchar *root_path)
 {
 	GtkTreeIter	new;
+	const gchar	*slash;
+	gchar		*git_ls_files[] = { "git", "ls-files", NULL };
+	gchar		*git_stdout = NULL, *git_stderr = NULL;
 
-	if(root == NULL)
+	slash = strrchr(root_path, G_DIR_SEPARATOR);
+	if(slash == NULL)
+		slash = root_path;
+	else
+		slash++;
+
+	if(repo == NULL)
 	{
-		GtkTreeIter	iter, repo;
+		GtkTreeIter	iter;
 
 		if(gtk_tree_model_get_iter_first(model, &iter))
 		{
-			root = &new;
-			gtk_tree_store_append(GTK_TREE_STORE(model), &repo, root);
+			repo = &new;
+			gtk_tree_store_append(GTK_TREE_STORE(model), repo, &iter);
 		}
+	}
+	/* At this point, we have a root iter in the tree, which we need to populate. */
+	gtk_tree_store_set(GTK_TREE_STORE(model), repo, 0, slash, 1, root_path,-1);
+
+	/* Now list the repository, and build a tree representation. Easy-peasy, right? */
+	if(subprocess_run(root_path, git_ls_files, NULL, &git_stdout, &git_stderr))
+	{
+		timer = g_timer_new();
+		tree_model_build_populate(model, git_stdout, repo);
+		g_free(git_stdout);
+		g_free(git_stderr);
+	}
+/*	gtk_tree_view_expand_all(GTK_TREE_VIEW(gitbrowser.view));*/
+}
+
+/* Look for a child with the given text as its data; if not found it's added in the proper location and returned. */
+static GNode * get_child(GNode *root, const gchar *text)
+{
+	GNode	*here;
+
+	if(root == NULL || text == NULL)
+		return NULL;
+
+	if((here = g_node_first_child(root)) != NULL)
+	{
+		while(here != NULL)
+		{
+			const gint	rel = strcmp(text, here->data);
+
+			if(rel == 0)
+				return here;
+			if(rel < 0)
+				return g_node_insert_data_before(root, here, (gpointer) text);
+			here = g_node_next_sibling(here);
+		}
+	}
+	return g_node_append_data(root, (gpointer) text);
+}
+
+static void tree_model_build_populate(GtkTreeModel *model, gchar *lines, GtkTreeIter *parent)
+{
+	gchar	*line, *nextline, *dir, *endptr;
+	GNode	*root = g_node_new(""), *prev;
+
+	/* Let's cheat: build a GNode n:ary tree first, then use that to build GtkTreeModel data. */
+	while((line = tok_tokenize_next(lines, &nextline, '\n')) != NULL)
+	{
+		prev = root;
+		dir = line;
+		while((dir = tok_tokenize_next(dir, &endptr, G_DIR_SEPARATOR)) != NULL)
+		{
+			prev = get_child(prev, dir);
+			dir = endptr;
+		}
+		if(prev == root)
+			get_child(root, line);
+		lines = nextline;
+	}
+	tree_model_build_traverse(model, root, parent);
+	g_node_destroy(root);
+}
+
+/* Traverse the children of the given GNode tree, and build a corresponding GtkTreeModel.
+ * The traversal order is special: inner nodes first, to group directories on top.
+*/
+static void tree_model_build_traverse(GtkTreeModel *model, GNode *root, GtkTreeIter *parent)
+{
+	GNode		*child;
+	GtkTreeIter	iter;
+
+	/* Inner nodes. */
+	for(child = g_node_first_child(root); child != NULL; child = g_node_next_sibling(child))
+	{
+		if(g_node_first_child(child) == NULL)
+			continue;
+		/* We now know this is an inner node; add tree node and recurse. */
+		gtk_tree_store_append(GTK_TREE_STORE(model), &iter, parent);
+		gtk_tree_store_set(GTK_TREE_STORE(model), &iter, 0, child->data, -1);
+		tree_model_build_traverse(model, child, &iter);
+	}
+	/* Leaves. */
+	for(child = g_node_first_child(root); child != NULL; child = g_node_next_sibling(child))
+	{
+		if(g_node_first_child(child) != NULL)
+			continue;
+		gtk_tree_store_append(GTK_TREE_STORE(model), &iter, parent);
+		gtk_tree_store_set(GTK_TREE_STORE(model), &iter, 0, child->data, -1);
 	}
 }
 
@@ -261,13 +388,18 @@ GtkWidget * tree_view_new(GtkTreeModel *model)
 
 void plugin_init(GeanyData *geany_data)
 {
+	GtkWidget	*scwin;
+
 	init_commands(gitbrowser.actions);
 
 	gitbrowser.model = tree_model_new();
 	gitbrowser.view = tree_view_new(gitbrowser.model);
 
-	gtk_widget_show_all(gitbrowser.view);
-	gtk_notebook_append_page(GTK_NOTEBOOK(geany->main_widgets->sidebar_notebook), gitbrowser.view, gtk_label_new("Git Browser"));
+	scwin = gtk_scrolled_window_new(NULL, NULL);
+	gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scwin), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
+	gtk_container_add(GTK_CONTAINER(scwin), gitbrowser.view);
+	gtk_widget_show_all(scwin);
+	gtk_notebook_append_page(GTK_NOTEBOOK(geany->main_widgets->sidebar_notebook), scwin, gtk_label_new("Git Browser"));
 
 /*	if(subprocess_run("/home/emil/data/workspace/gitbrowser", get_files, NULL, &output, &error) >= 0)
 	{
