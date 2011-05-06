@@ -19,6 +19,7 @@ enum
 	CMD_REPOSITORY_ADD = 0,
 	CMD_REPOSITORY_ADD_FROM_DOCUMENT,
 	CMD_REPOSITORY_REMOVE,
+	CMD_REPOSITORY_OPEN_QUICK,
 
 	CMD_DIR_EXPAND,
 	CMD_DIR_COLLAPSE,
@@ -109,6 +110,32 @@ static void cmd_repository_remove(GtkAction *action, gpointer user)
 	}
 }
 
+static void cmd_repository_open_quick(GtkAction *action, gpointer user)
+{
+	GtkListStore	*store;
+	GtkWidget	*dlg, *vbox, *label, *scwin, *view, *entry;
+
+	CMD_INIT("repository-open-quick", _("Quick Open ..."), _("Opens a document anywhere in the repository, with filtering."), GTK_STOCK_FIND);
+
+	store = gtk_list_store_new(2, G_TYPE_STRING, G_TYPE_STRING);
+
+	dlg = gtk_dialog_new();
+	gtk_window_set_title(GTK_WINDOW(dlg), _("Quick Open"));
+	vbox = ui_dialog_vbox_new(GTK_DIALOG(dlg));
+	label = gtk_label_new(_("Select one or more document(s) to open. Type to filter filenames."));
+	gtk_box_pack_start(GTK_BOX(vbox), label, FALSE, FALSE, 0);
+	view = gtk_tree_view_new_with_model(GTK_TREE_MODEL(store));
+	scwin = gtk_scrolled_window_new(NULL, NULL);
+	gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scwin), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
+	gtk_container_add(GTK_CONTAINER(scwin), view);
+	gtk_box_pack_start(GTK_BOX(vbox), scwin, TRUE, TRUE, 0);
+	entry = gtk_entry_new();
+	gtk_box_pack_start(GTK_BOX(vbox), entry, FALSE, FALSE, 0);
+	gtk_widget_show_all(vbox);
+	gtk_widget_grab_focus(entry);
+	gtk_dialog_run(GTK_DIALOG(dlg));
+}
+
 static void cmd_dir_expand(GtkAction *action, gpointer user)
 {
 	CMD_INIT("dir-expand", _("Expand"), _("Expands a directory node."), NULL);
@@ -159,6 +186,7 @@ void init_commands(GtkAction **actions)
 		cmd_repository_add_activate,
 		cmd_repository_add_from_document_activate,
 		cmd_repository_remove,
+		cmd_repository_open_quick,
 		cmd_dir_expand,
 		cmd_dir_collapse,
 		cmd_file_open,
@@ -444,6 +472,7 @@ static void menu_popup_repository(GdkEventButton *evt)
 	GtkWidget	*menu = menu_popup_create();
 
 	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_action_create_menu_item(gitbrowser.actions[CMD_REPOSITORY_REMOVE]));
+	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_action_create_menu_item(gitbrowser.actions[CMD_REPOSITORY_OPEN_QUICK]));
 	gtk_widget_show_all(menu);
 
 	gtk_menu_popup(GTK_MENU(menu), NULL, NULL, NULL, NULL, evt->button, evt->time);
