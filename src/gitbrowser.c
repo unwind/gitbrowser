@@ -41,7 +41,7 @@ static struct
 
 gboolean	tree_model_find_repository(GtkTreeModel *model, const gchar *root_path, GtkTreeIter *iter);
 void		tree_model_build_repository(GtkTreeModel *model, GtkTreeIter *root, const gchar *root_path);
-gboolean	tree_model_get_document_path(GtkTreeModel *model, GtkTreeIter *iter, gchar *buf, gsize buf_max);
+gboolean	tree_model_get_document_path(GtkTreeModel *model, const GtkTreeIter *iter, gchar *buf, gsize buf_max);
 
 /* -------------------------------------------------------------------------------------------------------------- */
 
@@ -116,34 +116,24 @@ static gboolean cb_tree_to_list(GtkTreeModel *model, GtkTreePath *path, GtkTreeI
 	GtkListStore	*list = data;
 	gchar		buf[2048];
 
-	printf("in callback\n");
-	{
-		gchar	*str;
-
-		gtk_tree_model_get(model, iter, 1, &str, -1);
-		printf("inspecting '%s'\n", str);
-		g_free(str);
-	}
-
 	if(!gtk_tree_path_is_descendant(path, gitbrowser.click_path))
-	{
-		printf(" not descendant, skipping\n");
 		return FALSE;
-	}
-
 	/* Grab full path, in local filename encoding, if iter is a document (leaf) node. */
 	if(tree_model_get_document_path(model, iter, buf, sizeof buf))
 	{
-		gchar		*filename;
+		gchar		*filename, *dname, *dpath;
 		GtkTreeIter	list_iter;
 
 		if((filename = strrchr(buf, G_DIR_SEPARATOR)) != NULL)
 			*filename++ = '\0';
 		else
 			filename = buf;
-		printf(" filename: '%s'\n", filename);
 		gtk_list_store_append(list, &list_iter);
-		gtk_list_store_set(list, &list_iter, 0, filename, 1, buf, -1);
+		dname = g_filename_display_name(filename);
+		dpath = g_filename_display_name(buf);
+		gtk_list_store_set(list, &list_iter, 0, dname, 1, dpath, -1);
+		g_free(dpath);
+		g_free(dname);
 	}
 	return FALSE;
 }
@@ -481,20 +471,12 @@ static void tree_model_build_traverse(GtkTreeModel *model, GNode *root, GtkTreeI
 }
 
 /* Gets the full path, in the local system's encoding, for the indicated document. Returns FALSE if given an inner node. */
-gboolean tree_model_get_document_path(GtkTreeModel *model, GtkTreeIter *iter, gchar *buf, gsize buf_max)
+gboolean tree_model_get_document_path(GtkTreeModel *model, const GtkTreeIter *iter, gchar *buf, gsize buf_max)
 {
-	{
-		gchar	*str;
-
-		gtk_tree_model_get(model, iter, 1, &str, -1);
-		printf("inspecting '%s'\n", str);
-		g_free(str);
-	}
-
-	if(!gtk_tree_model_iter_has_child(model, iter))
+	if(!gtk_tree_model_iter_has_child(model, (GtkTreeIter *) iter))
 	{
 		GString		*path = g_string_sized_new(1024);
-		GtkTreeIter	child;
+		GtkTreeIter	here = *iter, child;
 		gboolean	ok;
 
 		/* Walk towards the root, building the filename as we go. */
@@ -502,7 +484,7 @@ gboolean tree_model_get_document_path(GtkTreeModel *model, GtkTreeIter *iter, gc
 		{
 			gchar	*component = NULL;
 
-			gtk_tree_model_get(model, iter, 1, &component, -1);
+			gtk_tree_model_get(model, &here, 1, &component, -1);
 			if(component != NULL)
 			{
 				if(path->len > 0)
@@ -510,17 +492,13 @@ gboolean tree_model_get_document_path(GtkTreeModel *model, GtkTreeIter *iter, gc
 				g_string_prepend(path, component);
 				g_free(component);
 			}
-			child = *iter;
-		} while(gtk_tree_model_iter_parent(model, iter, &child));
+			child = here;
+		} while(gtk_tree_model_iter_parent(model, &here, &child));
 		ok = g_strlcpy(buf, path->str, buf_max) < buf_max;
 		g_string_free(path, TRUE);
-		printf("built filename, returning %d\n", ok);
 
 		return ok;
 	}
-	else
-		printf("not leaf\n");
-
 	return FALSE;
 }
 
