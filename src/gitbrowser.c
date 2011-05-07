@@ -172,6 +172,10 @@ static void cmd_repository_open_quick(GtkAction *action, gpointer user)
 
 	gtk_widget_grab_focus(entry);
 	response = gtk_dialog_run(GTK_DIALOG(dlg));
+	if(response == GTK_RESPONSE_OK)
+	{
+	}
+	gtk_widget_destroy(dlg);
 }
 
 static void cmd_dir_expand(GtkAction *action, gpointer user)
