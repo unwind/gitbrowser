@@ -41,6 +41,7 @@ static struct
 
 gboolean	tree_model_find_repository(GtkTreeModel *model, const gchar *root_path, GtkTreeIter *iter);
 void		tree_model_build_repository(GtkTreeModel *model, GtkTreeIter *root, const gchar *root_path);
+gboolean	tree_model_get_document_path(GtkTreeModel *model, GtkTreeIter *iter, gchar *buf, gsize buf_max);
 
 /* -------------------------------------------------------------------------------------------------------------- */
 
@@ -110,21 +111,66 @@ static void cmd_repository_remove(GtkAction *action, gpointer user)
 	}
 }
 
+static gboolean cb_tree_to_list(GtkTreeModel *model, GtkTreePath *path, GtkTreeIter *iter, gpointer data)
+{
+	GtkListStore	*list = data;
+	gchar		buf[2048];
+
+	printf("in callback\n");
+	{
+		gchar	*str;
+
+		gtk_tree_model_get(model, iter, 1, &str, -1);
+		printf("inspecting '%s'\n", str);
+		g_free(str);
+	}
+
+	if(!gtk_tree_path_is_descendant(path, gitbrowser.click_path))
+	{
+		printf(" not descendant, skipping\n");
+		return FALSE;
+	}
+
+	/* Grab full path, in local filename encoding, if iter is a document (leaf) node. */
+	if(tree_model_get_document_path(model, iter, buf, sizeof buf))
+	{
+		gchar		*filename;
+		GtkTreeIter	list_iter;
+
+		if((filename = strrchr(buf, G_DIR_SEPARATOR)) != NULL)
+			*filename++ = '\0';
+		else
+			filename = buf;
+		printf(" filename: '%s'\n", filename);
+		gtk_list_store_append(list, &list_iter);
+		gtk_list_store_set(list, &list_iter, 0, filename, 1, buf, -1);
+	}
+	return FALSE;
+}
+
 static void cmd_repository_open_quick(GtkAction *action, gpointer user)
 {
-	GtkListStore	*store;
-	GtkWidget	*dlg, *vbox, *label, *scwin, *view, *entry;
+	GtkListStore		*store;
+	GtkWidget		*dlg, *vbox, *label, *scwin, *view, *entry;
+        GtkCellRenderer         *cr;
+        GtkTreeViewColumn       *vc;
+        gint			response;
 
 	CMD_INIT("repository-open-quick", _("Quick Open ..."), _("Opens a document anywhere in the repository, with filtering."), GTK_STOCK_FIND);
 
-	store = gtk_list_store_new(2, G_TYPE_STRING, G_TYPE_STRING);
-
+	store = gtk_list_store_new(3, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING);
+	gtk_tree_model_foreach(GTK_TREE_MODEL(gitbrowser.model), cb_tree_to_list, store);
 	dlg = gtk_dialog_new();
 	gtk_window_set_title(GTK_WINDOW(dlg), _("Quick Open"));
 	vbox = ui_dialog_vbox_new(GTK_DIALOG(dlg));
 	label = gtk_label_new(_("Select one or more document(s) to open. Type to filter filenames."));
 	gtk_box_pack_start(GTK_BOX(vbox), label, FALSE, FALSE, 0);
 	view = gtk_tree_view_new_with_model(GTK_TREE_MODEL(store));
+	cr = gtk_cell_renderer_text_new();
+	vc = gtk_tree_view_column_new_with_attributes(_("Filename"), cr, "text", 0, NULL);
+	gtk_tree_view_append_column(GTK_TREE_VIEW(view), vc);
+	vc = gtk_tree_view_column_new_with_attributes(_("Location"), cr, "text", 1, NULL);
+	gtk_tree_view_append_column(GTK_TREE_VIEW(view), vc);
 	scwin = gtk_scrolled_window_new(NULL, NULL);
 	gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scwin), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
 	gtk_container_add(GTK_CONTAINER(scwin), view);
@@ -132,8 +178,9 @@ static void cmd_repository_open_quick(GtkAction *action, gpointer user)
 	entry = gtk_entry_new();
 	gtk_box_pack_start(GTK_BOX(vbox), entry, FALSE, FALSE, 0);
 	gtk_widget_show_all(vbox);
+
 	gtk_widget_grab_focus(entry);
-	gtk_dialog_run(GTK_DIALOG(dlg));
+	response = gtk_dialog_run(GTK_DIALOG(dlg));
 }
 
 static void cmd_dir_expand(GtkAction *action, gpointer user)
@@ -433,6 +480,50 @@ static void tree_model_build_traverse(GtkTreeModel *model, GNode *root, GtkTreeI
 	}
 }
 
+/* Gets the full path, in the local system's encoding, for the indicated document. Returns FALSE if given an inner node. */
+gboolean tree_model_get_document_path(GtkTreeModel *model, GtkTreeIter *iter, gchar *buf, gsize buf_max)
+{
+	{
+		gchar	*str;
+
+		gtk_tree_model_get(model, iter, 1, &str, -1);
+		printf("inspecting '%s'\n", str);
+		g_free(str);
+	}
+
+	if(!gtk_tree_model_iter_has_child(model, iter))
+	{
+		GString		*path = g_string_sized_new(1024);
+		GtkTreeIter	child;
+		gboolean	ok;
+
+		/* Walk towards the root, building the filename as we go. */
+		do
+		{
+			gchar	*component = NULL;
+
+			gtk_tree_model_get(model, iter, 1, &component, -1);
+			if(component != NULL)
+			{
+				if(path->len > 0)
+					g_string_prepend(path, G_DIR_SEPARATOR_S);
+				g_string_prepend(path, component);
+				g_free(component);
+			}
+			child = *iter;
+		} while(gtk_tree_model_iter_parent(model, iter, &child));
+		ok = g_strlcpy(buf, path->str, buf_max) < buf_max;
+		g_string_free(path, TRUE);
+		printf("built filename, returning %d\n", ok);
+
+		return ok;
+	}
+	else
+		printf("not leaf\n");
+
+	return FALSE;
+}
+
 static gboolean evt_menu_selection_done(GtkWidget *wid, gpointer user)
 {
 	if(gitbrowser.click_path != NULL)
@@ -440,7 +531,6 @@ static gboolean evt_menu_selection_done(GtkWidget *wid, gpointer user)
 		gtk_tree_path_free(gitbrowser.click_path);
 		gitbrowser.click_path = NULL;
 	}
-
 	return FALSE;
 }
 
