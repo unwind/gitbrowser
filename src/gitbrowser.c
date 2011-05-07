@@ -150,8 +150,7 @@ static void cmd_repository_open_quick(GtkAction *action, gpointer user)
 
 	store = gtk_list_store_new(3, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING);
 	gtk_tree_model_foreach(GTK_TREE_MODEL(gitbrowser.model), cb_tree_to_list, store);
-	dlg = gtk_dialog_new();
-	gtk_window_set_title(GTK_WINDOW(dlg), _("Quick Open"));
+	dlg = gtk_dialog_new_with_buttons(_("Git Repository Quick Open"), NULL, GTK_DIALOG_MODAL, GTK_STOCK_OK, GTK_RESPONSE_OK, GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL, NULL);
 	vbox = ui_dialog_vbox_new(GTK_DIALOG(dlg));
 	label = gtk_label_new(_("Select one or more document(s) to open. Type to filter filenames."));
 	gtk_box_pack_start(GTK_BOX(vbox), label, FALSE, FALSE, 0);
@@ -168,6 +167,8 @@ static void cmd_repository_open_quick(GtkAction *action, gpointer user)
 	entry = gtk_entry_new();
 	gtk_box_pack_start(GTK_BOX(vbox), entry, FALSE, FALSE, 0);
 	gtk_widget_show_all(vbox);
+
+	gtk_dialog_set_response_sensitive(GTK_DIALOG(dlg), GTK_RESPONSE_OK, FALSE);
 
 	gtk_widget_grab_focus(entry);
 	response = gtk_dialog_run(GTK_DIALOG(dlg));
