@@ -142,46 +142,51 @@ static gboolean cb_tree_to_list(GtkTreeModel *model, GtkTreePath *path, GtkTreeI
 
 static void cmd_repository_open_quick(GtkAction *action, gpointer user)
 {
-	GtkListStore		*store;
+	static GtkWidget	*dlg = NULL;
+	static GtkListStore	*store = NULL;
 	GtkTreeModel		*sort;
-	GtkWidget		*dlg, *vbox, *label, *scwin, *view, *entry;
+	GtkWidget		*vbox, *label, *scwin, *view, *entry;
         GtkCellRenderer         *cr;
         GtkTreeViewColumn       *vc;
         gint			response;
 
 	CMD_INIT("repository-open-quick", _("Quick Open ..."), _("Opens a document anywhere in the repository, with filtering."), GTK_STOCK_FIND);
 
-	store = gtk_list_store_new(3, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING);
+	if(dlg == NULL)
+	{
+		store = gtk_list_store_new(3, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING);
+		dlg = gtk_dialog_new_with_buttons(_("Git Repository Quick Open"), NULL, GTK_DIALOG_MODAL, GTK_STOCK_OK, GTK_RESPONSE_OK, GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL, NULL);
+		vbox = ui_dialog_vbox_new(GTK_DIALOG(dlg));
+		label = gtk_label_new(_("Select one or more document(s) to open. Type to filter filenames."));
+		gtk_box_pack_start(GTK_BOX(vbox), label, FALSE, FALSE, 0);
+		sort = gtk_tree_model_sort_new_with_model(GTK_TREE_MODEL(store));
+		view = gtk_tree_view_new_with_model(GTK_TREE_MODEL(sort));
+		cr = gtk_cell_renderer_text_new();
+		vc = gtk_tree_view_column_new_with_attributes(_("Filename"), cr, "text", 0, NULL);
+		gtk_tree_view_column_set_sort_column_id(vc, 0);
+		gtk_tree_view_append_column(GTK_TREE_VIEW(view), vc);
+		vc = gtk_tree_view_column_new_with_attributes(_("Location"), cr, "text", 1, NULL);
+		gtk_tree_view_column_set_sort_column_id(vc, 1);
+		gtk_tree_view_append_column(GTK_TREE_VIEW(view), vc);
+		scwin = gtk_scrolled_window_new(NULL, NULL);
+		gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scwin), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
+		gtk_container_add(GTK_CONTAINER(scwin), view);
+		gtk_box_pack_start(GTK_BOX(vbox), scwin, TRUE, TRUE, 0);
+		entry = gtk_entry_new();
+		gtk_box_pack_start(GTK_BOX(vbox), entry, FALSE, FALSE, 0);
+		gtk_widget_show_all(vbox);
+
+		gtk_dialog_set_response_sensitive(GTK_DIALOG(dlg), GTK_RESPONSE_OK, FALSE);
+
+		gtk_widget_grab_focus(entry);
+	}
+	gtk_list_store_clear(GTK_LIST_STORE(store));
 	gtk_tree_model_foreach(GTK_TREE_MODEL(gitbrowser.model), cb_tree_to_list, store);
-	dlg = gtk_dialog_new_with_buttons(_("Git Repository Quick Open"), NULL, GTK_DIALOG_MODAL, GTK_STOCK_OK, GTK_RESPONSE_OK, GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL, NULL);
-	vbox = ui_dialog_vbox_new(GTK_DIALOG(dlg));
-	label = gtk_label_new(_("Select one or more document(s) to open. Type to filter filenames."));
-	gtk_box_pack_start(GTK_BOX(vbox), label, FALSE, FALSE, 0);
-	sort = gtk_tree_model_sort_new_with_model(GTK_TREE_MODEL(store));
-	view = gtk_tree_view_new_with_model(GTK_TREE_MODEL(sort));
-	cr = gtk_cell_renderer_text_new();
-	vc = gtk_tree_view_column_new_with_attributes(_("Filename"), cr, "text", 0, NULL);
-	gtk_tree_view_column_set_sort_column_id(vc, 0);
-	gtk_tree_view_append_column(GTK_TREE_VIEW(view), vc);
-	vc = gtk_tree_view_column_new_with_attributes(_("Location"), cr, "text", 1, NULL);
-	gtk_tree_view_column_set_sort_column_id(vc, 1);
-	gtk_tree_view_append_column(GTK_TREE_VIEW(view), vc);
-	scwin = gtk_scrolled_window_new(NULL, NULL);
-	gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scwin), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
-	gtk_container_add(GTK_CONTAINER(scwin), view);
-	gtk_box_pack_start(GTK_BOX(vbox), scwin, TRUE, TRUE, 0);
-	entry = gtk_entry_new();
-	gtk_box_pack_start(GTK_BOX(vbox), entry, FALSE, FALSE, 0);
-	gtk_widget_show_all(vbox);
-
-	gtk_dialog_set_response_sensitive(GTK_DIALOG(dlg), GTK_RESPONSE_OK, FALSE);
-
-	gtk_widget_grab_focus(entry);
 	response = gtk_dialog_run(GTK_DIALOG(dlg));
 	if(response == GTK_RESPONSE_OK)
 	{
 	}
-	gtk_widget_destroy(dlg);
+	gtk_widget_hide(dlg);
 }
 
 static void cmd_repository_move_up(GtkAction *action, gpointer user)
