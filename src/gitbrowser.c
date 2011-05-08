@@ -20,6 +20,7 @@ enum
 	CMD_REPOSITORY_ADD_FROM_DOCUMENT,
 	CMD_REPOSITORY_REMOVE,
 	CMD_REPOSITORY_OPEN_QUICK,
+	CMD_REPOSITORY_OPEN_QUICK_FROM_DOCUMENT,
 	CMD_REPOSITORY_MOVE_UP,
 	CMD_REPOSITORY_MOVE_DOWN,
 
@@ -59,6 +60,7 @@ static struct
 
 Repository *	repository_new(const gchar *root_path);
 Repository *	repository_find_by_path(const gchar *path);
+void		repository_open_quick(Repository *repo);
 
 gboolean	tree_model_find_repository(GtkTreeModel *model, const gchar *root_path, GtkTreeIter *iter);
 void		tree_model_build_repository(GtkTreeModel *model, GtkTreeIter *root, const gchar *root_path);
@@ -70,7 +72,7 @@ gboolean	tree_model_get_document_path(GtkTreeModel *model, const GtkTreeIter *it
 /* Trickery to make the same function work both as the signal-handler, and for creating the actual GtkAction. Too weird? */
 #define	CMD_INIT(n, l, tt, s)	if(action == NULL) { GtkAction **me = (GtkAction **) user; *me = gtk_action_new(n, _(l), _(tt), s); return; }
 
-static void cmd_repository_add_activate(GtkAction *action, gpointer user)
+static void cmd_repository_add(GtkAction *action, gpointer user)
 {
 	static GtkWidget	*dialog = NULL;
 	gint			response;
@@ -108,7 +110,7 @@ static void cmd_repository_add_activate(GtkAction *action, gpointer user)
 	}
 }
 
-static void cmd_repository_add_from_document_activate(GtkAction *action, gpointer user)
+static void cmd_repository_add_from_document(GtkAction *action, gpointer user)
 {
 	GeanyDocument	*doc;
 
@@ -163,46 +165,10 @@ static void cmd_repository_remove(GtkAction *action, gpointer user)
 	}
 }
 
-static gboolean cb_tree_to_list(GtkTreeModel *model, GtkTreePath *path, GtkTreeIter *iter, gpointer data)
-{
-	GtkListStore	*list = data;
-	gchar		buf[2048];
-
-	if(!gtk_tree_path_is_descendant(path, gitbrowser.click_path))
-		return FALSE;
-	/* Grab full path, in local filename encoding, if iter is a document (leaf) node. */
-	if(tree_model_get_document_path(model, iter, buf, sizeof buf))
-	{
-		gchar		*filename, *dname, *dpath;
-		GtkTreeIter	list_iter;
-
-		if((filename = strrchr(buf, G_DIR_SEPARATOR)) != NULL)
-			*filename++ = '\0';
-		else
-			filename = buf;
-		gtk_list_store_append(list, &list_iter);
-		dname = g_filename_display_name(filename);
-		dpath = g_filename_display_name(buf);
-		gtk_list_store_set(list, &list_iter, 0, dname, 1, dpath, -1);
-		g_free(dpath);
-		g_free(dname);
-	}
-	return FALSE;
-}
-
-static void evt_open_quick_selection_changed(GtkTreeSelection *sel, gpointer user)
-{
-	QuickOpenInfo	*qoi = user;
-
-	gtk_dialog_set_response_sensitive(GTK_DIALOG(qoi->dialog), GTK_RESPONSE_OK, gtk_tree_selection_count_selected_rows(sel) > 0);
-}
-
 static void cmd_repository_open_quick(GtkAction *action, gpointer user)
 {
 	GtkTreeIter	iter;
 	Repository	*repo = NULL;
-	QuickOpenInfo	*qoi;
-        gint		response;
 
 	CMD_INIT("repository-open-quick", _("Quick Open ..."), _("Opens a document anywhere in the repository, with filtering."), GTK_STOCK_FIND);
 
@@ -217,89 +183,20 @@ static void cmd_repository_open_quick(GtkAction *action, gpointer user)
 			g_free(path);
 		}
 	}
-	if(repo == NULL)
-	{
-		printf("repository not found\n");
+	repository_open_quick(repo);
+}
+
+static void cmd_repository_open_quick_from_document(GtkAction *action, gpointer user)
+{
+	GeanyDocument	*doc = document_get_current();
+	Repository	*repo;
+
+	CMD_INIT("repository-open-quick-from-document", _("Quick Open from Document ..."), _("Opens the Quick Open dialog for the current docuḿent's repository"), GTK_STOCK_FIND);
+
+	if(doc == NULL)
 		return;
-	}
-	qoi = &repo->quick_open;
-
-	if(qoi->dialog == NULL)
-	{
-		GtkWidget		*vbox, *label, *scwin, *entry;
-		GtkCellRenderer         *cr;
-		GtkTreeViewColumn       *vc;
-
-		qoi->store = gtk_list_store_new(2, G_TYPE_STRING, G_TYPE_STRING);
-		qoi->dialog = gtk_dialog_new_with_buttons(_("Git Repository Quick Open"), NULL, GTK_DIALOG_MODAL, GTK_STOCK_OK, GTK_RESPONSE_OK, GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL, NULL);
-		vbox = ui_dialog_vbox_new(GTK_DIALOG(qoi->dialog));
-		label = gtk_label_new(_("Select one or more document(s) to open. Type to filter filenames."));
-		gtk_box_pack_start(GTK_BOX(vbox), label, FALSE, FALSE, 0);
-		qoi->sort = gtk_tree_model_sort_new_with_model(GTK_TREE_MODEL(qoi->store));
-		qoi->view = gtk_tree_view_new_with_model(GTK_TREE_MODEL(qoi->sort));
-		cr = gtk_cell_renderer_text_new();
-		vc = gtk_tree_view_column_new_with_attributes(_("Filename"), cr, "text", 0, NULL);
-		gtk_tree_view_column_set_sort_column_id(vc, 0);
-		gtk_tree_view_append_column(GTK_TREE_VIEW(qoi->view), vc);
-		vc = gtk_tree_view_column_new_with_attributes(_("Location"), cr, "text", 1, NULL);
-		gtk_tree_view_column_set_sort_column_id(vc, 1);
-		gtk_tree_view_append_column(GTK_TREE_VIEW(qoi->view), vc);
-		scwin = gtk_scrolled_window_new(NULL, NULL);
-		gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scwin), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
-		gtk_container_add(GTK_CONTAINER(scwin), qoi->view);
-		gtk_box_pack_start(GTK_BOX(vbox), scwin, TRUE, TRUE, 0);
-		entry = gtk_entry_new();
-		gtk_box_pack_start(GTK_BOX(vbox), entry, FALSE, FALSE, 0);
-
-		gtk_dialog_set_response_sensitive(GTK_DIALOG(qoi->dialog), GTK_RESPONSE_OK, FALSE);
-
-		gtk_widget_show_all(vbox);
-
-		qoi->selection = gtk_tree_view_get_selection(GTK_TREE_VIEW(qoi->view));
-		gtk_tree_selection_set_mode(qoi->selection, GTK_SELECTION_MULTIPLE);
-		g_signal_connect(G_OBJECT(qoi->selection), "changed", G_CALLBACK(evt_open_quick_selection_changed), qoi);
-
-		gtk_tree_model_foreach(GTK_TREE_MODEL(gitbrowser.model), cb_tree_to_list, qoi->store);
-
-		gtk_widget_grab_focus(entry);
-	}
-	response = gtk_dialog_run(GTK_DIALOG(qoi->dialog));
-	if(response == GTK_RESPONSE_OK)
-	{
-		GList		*selection = gtk_tree_selection_get_selected_rows(qoi->selection, NULL), *iter;
-
-		for(iter = selection; iter != NULL; iter = g_list_next(iter))
-		{
-			GtkTreePath	*unsorted;
-
-			if((unsorted = gtk_tree_model_sort_convert_path_to_child_path(GTK_TREE_MODEL_SORT(qoi->sort), iter->data)) != NULL)
-			{
-				GtkTreeIter	here;
-
-				if(gtk_tree_model_get_iter(GTK_TREE_MODEL(qoi->store), &here, unsorted))
-				{
-					gchar	buf[2048], *dpath, *dname, *fn;
-					gint	len;
-
-					gtk_tree_model_get(GTK_TREE_MODEL(qoi->store), &here, 0, &dname, 1, &dpath, -1);
-					if((len = g_snprintf(buf, sizeof buf, "%s%s%s", dpath, G_DIR_SEPARATOR_S, dname)) < sizeof buf)
-					{
-						if((fn = g_filename_from_utf8(buf, (gssize) len, NULL, NULL, NULL)) != NULL)
-						{
-							document_open_file(buf, FALSE, NULL, NULL);
-							g_free(fn);
-						}
-					}
-					g_free(dname);
-					g_free(dpath);
-				}
-				gtk_tree_path_free(unsorted);
-			}
-		}
-		g_list_foreach(selection, (GFunc) gtk_tree_path_free, NULL);
-		g_list_free(selection);
-	}
-	gtk_widget_hide(qoi->dialog);
+	repo = repository_find_by_path(doc->real_path);
+	repository_open_quick(repo);
 }
 
 static void cmd_repository_move_up(GtkAction *action, gpointer user)
@@ -369,10 +266,11 @@ void init_commands(GtkAction **actions)
 {
 	typedef void (*ActivateOrCreate)(GtkAction *action, gpointer user);
 	const ActivateOrCreate funcs[] = {
-		cmd_repository_add_activate,
-		cmd_repository_add_from_document_activate,
+		cmd_repository_add,
+		cmd_repository_add_from_document,
 		cmd_repository_remove,
 		cmd_repository_open_quick,
+		cmd_repository_open_quick_from_document,
 		cmd_repository_move_up,
 		cmd_repository_move_down,
 		cmd_dir_expand,
@@ -489,6 +387,127 @@ Repository * repository_find_by_path(const gchar *path)
 			return repo;
 	}
 	return NULL;
+}
+
+static gboolean cb_tree_to_list(GtkTreeModel *model, GtkTreePath *path, GtkTreeIter *iter, gpointer data)
+{
+	GtkListStore	*list = data;
+	gchar		buf[2048];
+
+	if(!gtk_tree_path_is_descendant(path, gitbrowser.click_path))
+		return FALSE;
+	/* Grab full path, in local filename encoding, if iter is a document (leaf) node. */
+	if(tree_model_get_document_path(model, iter, buf, sizeof buf))
+	{
+		gchar		*filename, *dname, *dpath;
+		GtkTreeIter	list_iter;
+
+		if((filename = strrchr(buf, G_DIR_SEPARATOR)) != NULL)
+			*filename++ = '\0';
+		else
+			filename = buf;
+		gtk_list_store_append(list, &list_iter);
+		dname = g_filename_display_name(filename);
+		dpath = g_filename_display_name(buf);
+		gtk_list_store_set(list, &list_iter, 0, dname, 1, dpath, -1);
+		g_free(dpath);
+		g_free(dname);
+	}
+	return FALSE;
+}
+
+static void evt_open_quick_selection_changed(GtkTreeSelection *sel, gpointer user)
+{
+	QuickOpenInfo	*qoi = user;
+
+	gtk_dialog_set_response_sensitive(GTK_DIALOG(qoi->dialog), GTK_RESPONSE_OK, gtk_tree_selection_count_selected_rows(sel) > 0);
+}
+
+void repository_open_quick(Repository *repo)
+{
+	QuickOpenInfo	*qoi;
+        gint		response;
+
+	if(!repo)
+		return;
+	qoi = &repo->quick_open;
+
+	if(qoi->dialog == NULL)
+	{
+		GtkWidget		*vbox, *label, *scwin, *entry;
+		GtkCellRenderer         *cr;
+		GtkTreeViewColumn       *vc;
+
+		qoi->store = gtk_list_store_new(2, G_TYPE_STRING, G_TYPE_STRING);
+		qoi->dialog = gtk_dialog_new_with_buttons(_("Git Repository Quick Open"), NULL, GTK_DIALOG_MODAL, GTK_STOCK_OK, GTK_RESPONSE_OK, GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL, NULL);
+		vbox = ui_dialog_vbox_new(GTK_DIALOG(qoi->dialog));
+		label = gtk_label_new(_("Select one or more document(s) to open. Type to filter filenames."));
+		gtk_box_pack_start(GTK_BOX(vbox), label, FALSE, FALSE, 0);
+		qoi->sort = gtk_tree_model_sort_new_with_model(GTK_TREE_MODEL(qoi->store));
+		qoi->view = gtk_tree_view_new_with_model(GTK_TREE_MODEL(qoi->sort));
+		cr = gtk_cell_renderer_text_new();
+		vc = gtk_tree_view_column_new_with_attributes(_("Filename"), cr, "text", 0, NULL);
+		gtk_tree_view_column_set_sort_column_id(vc, 0);
+		gtk_tree_view_append_column(GTK_TREE_VIEW(qoi->view), vc);
+		vc = gtk_tree_view_column_new_with_attributes(_("Location"), cr, "text", 1, NULL);
+		gtk_tree_view_column_set_sort_column_id(vc, 1);
+		gtk_tree_view_append_column(GTK_TREE_VIEW(qoi->view), vc);
+		scwin = gtk_scrolled_window_new(NULL, NULL);
+		gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scwin), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
+		gtk_container_add(GTK_CONTAINER(scwin), qoi->view);
+		gtk_box_pack_start(GTK_BOX(vbox), scwin, TRUE, TRUE, 0);
+		entry = gtk_entry_new();
+		gtk_box_pack_start(GTK_BOX(vbox), entry, FALSE, FALSE, 0);
+
+		gtk_dialog_set_response_sensitive(GTK_DIALOG(qoi->dialog), GTK_RESPONSE_OK, FALSE);
+
+		gtk_widget_show_all(vbox);
+
+		qoi->selection = gtk_tree_view_get_selection(GTK_TREE_VIEW(qoi->view));
+		gtk_tree_selection_set_mode(qoi->selection, GTK_SELECTION_MULTIPLE);
+		g_signal_connect(G_OBJECT(qoi->selection), "changed", G_CALLBACK(evt_open_quick_selection_changed), qoi);
+
+		gtk_tree_model_foreach(GTK_TREE_MODEL(gitbrowser.model), cb_tree_to_list, qoi->store);
+
+		gtk_widget_grab_focus(entry);
+	}
+	response = gtk_dialog_run(GTK_DIALOG(qoi->dialog));
+	if(response == GTK_RESPONSE_OK)
+	{
+		GList		*selection = gtk_tree_selection_get_selected_rows(qoi->selection, NULL), *iter;
+
+		for(iter = selection; iter != NULL; iter = g_list_next(iter))
+		{
+			GtkTreePath	*unsorted;
+
+			if((unsorted = gtk_tree_model_sort_convert_path_to_child_path(GTK_TREE_MODEL_SORT(qoi->sort), iter->data)) != NULL)
+			{
+				GtkTreeIter	here;
+
+				if(gtk_tree_model_get_iter(GTK_TREE_MODEL(qoi->store), &here, unsorted))
+				{
+					gchar	buf[2048], *dpath, *dname, *fn;
+					gint	len;
+
+					gtk_tree_model_get(GTK_TREE_MODEL(qoi->store), &here, 0, &dname, 1, &dpath, -1);
+					if((len = g_snprintf(buf, sizeof buf, "%s%s%s", dpath, G_DIR_SEPARATOR_S, dname)) < sizeof buf)
+					{
+						if((fn = g_filename_from_utf8(buf, (gssize) len, NULL, NULL, NULL)) != NULL)
+						{
+							document_open_file(buf, FALSE, NULL, NULL);
+							g_free(fn);
+						}
+					}
+					g_free(dname);
+					g_free(dpath);
+				}
+				gtk_tree_path_free(unsorted);
+			}
+		}
+		g_list_foreach(selection, (GFunc) gtk_tree_path_free, NULL);
+		g_list_free(selection);
+	}
+	gtk_widget_hide(qoi->dialog);
 }
 
 /* -------------------------------------------------------------------------------------------------------------- */
@@ -740,12 +759,12 @@ static GtkWidget * menu_popup_create(void)
 
 static void menu_popup_repositories(GdkEventButton *evt)
 {
-	GtkWidget	*menu = menu_popup_create(), *item;
+	GtkWidget	*menu = menu_popup_create();
 
-	item = gtk_action_create_menu_item(gitbrowser.actions[CMD_REPOSITORY_ADD]);
-	gtk_menu_shell_append(GTK_MENU_SHELL(menu), item);
-	item = gtk_action_create_menu_item(gitbrowser.actions[CMD_REPOSITORY_ADD_FROM_DOCUMENT]);
-	gtk_menu_shell_append(GTK_MENU_SHELL(menu), item);
+	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_action_create_menu_item(gitbrowser.actions[CMD_REPOSITORY_OPEN_QUICK_FROM_DOCUMENT]));
+	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_separator_menu_item_new());
+	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_action_create_menu_item(gitbrowser.actions[CMD_REPOSITORY_ADD]));
+	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_action_create_menu_item(gitbrowser.actions[CMD_REPOSITORY_ADD_FROM_DOCUMENT]));
 	gtk_widget_show_all(menu);
 
 	gtk_menu_popup(GTK_MENU(menu), NULL, NULL, NULL, NULL, evt->button, evt->time);
