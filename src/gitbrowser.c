@@ -11,8 +11,8 @@ PLUGIN_VERSION_CHECK(147)
 
 PLUGIN_SET_INFO("Git Browser",
 		"A minimalistic browser for Git repositories.",
-                "1.0",
-                "Emil Brink <emil@obsession.se>")
+		"0.1",
+		"Emil Brink <emil@obsession.se>")
 
 enum
 {
@@ -31,15 +31,34 @@ enum
 	NUM_COMMANDS
 };
 
+typedef struct
+{
+	GtkWidget		*dialog;
+	GtkWidget		*view;
+	GtkTreeSelection	*selection;
+	GtkListStore		*store;
+	GtkTreeModel		*sort;
+} QuickOpenInfo;
+
+typedef struct
+{
+	gchar		root_path[1024];	/* Root path, this is where the ".git/" subdirectory is. */
+	QuickOpenInfo	quick_open;		/* State tracking for the "Quick Open" command's dialog. */
+} Repository;
+
 static struct
 {
 	GtkTreeModel	*model;
 	GtkWidget	*view;
 	GtkAction	*actions[NUM_COMMANDS];
 	GtkTreePath	*click_path;
+	GHashTable	*repositories;		/* Hashed on root path. */
 } gitbrowser;
 
 /* -------------------------------------------------------------------------------------------------------------- */
+
+Repository *	repository_new(const gchar *root_path);
+Repository *	repository_find_by_path(const gchar *path);
 
 gboolean	tree_model_find_repository(GtkTreeModel *model, const gchar *root_path, GtkTreeIter *iter);
 void		tree_model_build_repository(GtkTreeModel *model, GtkTreeIter *root, const gchar *root_path);
@@ -54,8 +73,6 @@ gboolean	tree_model_get_document_path(GtkTreeModel *model, const GtkTreeIter *it
 static void cmd_repository_add_activate(GtkAction *action, gpointer user)
 {
 	CMD_INIT("repository-add", _("Add..."), _("Add a new repository based on a filesystem location."), GTK_STOCK_ADD)
-
-	printf("time to add!\n");
 }
 
 static void cmd_repository_add_from_document_activate(GtkAction *action, gpointer user)
@@ -68,7 +85,6 @@ static void cmd_repository_add_from_document_activate(GtkAction *action, gpointe
 	{
 		GString	*tmp = g_string_new(doc->real_path);
 
-		printf("current document is '%s'\n", doc->real_path);
 		/* Step up through the directory hierarchy, looking for a ".git" directory that marks the repo's root. */
 		while(TRUE)
 		{
@@ -85,11 +101,11 @@ static void cmd_repository_add_from_document_activate(GtkAction *action, gpointe
 					{
 						GtkTreeIter	iter;
 
-						printf("found repository (%s) root in '%s'\n", name + 1, git);
-						printf(" repo root is '%s'\n", tmp->str);
 						if(!tree_model_find_repository(gitbrowser.model, tmp->str, &iter))
 						{
-							tree_model_build_repository(gitbrowser.model, NULL, tmp->str);
+							Repository	*repo = repository_new(tmp->str);
+
+							tree_model_build_repository(gitbrowser.model, NULL, repo->root_path);
 						}
 						tmp->str[0] = '\0';
 					}
@@ -143,77 +159,96 @@ static gboolean cb_tree_to_list(GtkTreeModel *model, GtkTreePath *path, GtkTreeI
 
 static void evt_open_quick_selection_changed(GtkTreeSelection *sel, gpointer user)
 {
-	gtk_dialog_set_response_sensitive(GTK_DIALOG(user), GTK_RESPONSE_OK, gtk_tree_selection_count_selected_rows(sel) > 0);
+	QuickOpenInfo	*qoi = user;
+
+	gtk_dialog_set_response_sensitive(GTK_DIALOG(qoi->dialog), GTK_RESPONSE_OK, gtk_tree_selection_count_selected_rows(sel) > 0);
 }
 
 static void cmd_repository_open_quick(GtkAction *action, gpointer user)
 {
-	static GtkWidget	*dlg = NULL, *view = NULL;
-	static GtkListStore	*store = NULL;
-	static GtkTreeSelection	*sel = NULL;
-        gint			response;
+	GtkTreeIter	iter;
+	Repository	*repo = NULL;
+	QuickOpenInfo	*qoi;
+        gint		response;
 
 	CMD_INIT("repository-open-quick", _("Quick Open ..."), _("Opens a document anywhere in the repository, with filtering."), GTK_STOCK_FIND);
 
-	if(dlg == NULL)
+	if(gtk_tree_model_get_iter(gitbrowser.model, &iter, gitbrowser.click_path))
 	{
-		GtkTreeModel		*sort;
+		gchar	*path = NULL;
+
+		gtk_tree_model_get(gitbrowser.model, &iter, 1, &path, -1);
+		if(path != NULL)
+		{
+			repo = repository_find_by_path(path);
+			g_free(path);
+		}
+	}
+	if(repo == NULL)
+	{
+		printf("repository not found\n");
+		return;
+	}
+	qoi = &repo->quick_open;
+
+	if(qoi->dialog == NULL)
+	{
 		GtkWidget		*vbox, *label, *scwin, *entry;
 		GtkCellRenderer         *cr;
 		GtkTreeViewColumn       *vc;
 
-		store = gtk_list_store_new(2, G_TYPE_STRING, G_TYPE_STRING);
-		dlg = gtk_dialog_new_with_buttons(_("Git Repository Quick Open"), NULL, GTK_DIALOG_MODAL, GTK_STOCK_OK, GTK_RESPONSE_OK, GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL, NULL);
-		vbox = ui_dialog_vbox_new(GTK_DIALOG(dlg));
+		qoi->store = gtk_list_store_new(2, G_TYPE_STRING, G_TYPE_STRING);
+		qoi->dialog = gtk_dialog_new_with_buttons(_("Git Repository Quick Open"), NULL, GTK_DIALOG_MODAL, GTK_STOCK_OK, GTK_RESPONSE_OK, GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL, NULL);
+		vbox = ui_dialog_vbox_new(GTK_DIALOG(qoi->dialog));
 		label = gtk_label_new(_("Select one or more document(s) to open. Type to filter filenames."));
 		gtk_box_pack_start(GTK_BOX(vbox), label, FALSE, FALSE, 0);
-		sort = gtk_tree_model_sort_new_with_model(GTK_TREE_MODEL(store));
-		view = gtk_tree_view_new_with_model(GTK_TREE_MODEL(sort));
+		qoi->sort = gtk_tree_model_sort_new_with_model(GTK_TREE_MODEL(qoi->store));
+		qoi->view = gtk_tree_view_new_with_model(GTK_TREE_MODEL(qoi->sort));
 		cr = gtk_cell_renderer_text_new();
 		vc = gtk_tree_view_column_new_with_attributes(_("Filename"), cr, "text", 0, NULL);
 		gtk_tree_view_column_set_sort_column_id(vc, 0);
-		gtk_tree_view_append_column(GTK_TREE_VIEW(view), vc);
+		gtk_tree_view_append_column(GTK_TREE_VIEW(qoi->view), vc);
 		vc = gtk_tree_view_column_new_with_attributes(_("Location"), cr, "text", 1, NULL);
 		gtk_tree_view_column_set_sort_column_id(vc, 1);
-		gtk_tree_view_append_column(GTK_TREE_VIEW(view), vc);
+		gtk_tree_view_append_column(GTK_TREE_VIEW(qoi->view), vc);
 		scwin = gtk_scrolled_window_new(NULL, NULL);
 		gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scwin), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
-		gtk_container_add(GTK_CONTAINER(scwin), view);
+		gtk_container_add(GTK_CONTAINER(scwin), qoi->view);
 		gtk_box_pack_start(GTK_BOX(vbox), scwin, TRUE, TRUE, 0);
 		entry = gtk_entry_new();
 		gtk_box_pack_start(GTK_BOX(vbox), entry, FALSE, FALSE, 0);
+
+		gtk_dialog_set_response_sensitive(GTK_DIALOG(qoi->dialog), GTK_RESPONSE_OK, FALSE);
+
 		gtk_widget_show_all(vbox);
 
-		gtk_dialog_set_response_sensitive(GTK_DIALOG(dlg), GTK_RESPONSE_OK, FALSE);
+		qoi->selection = gtk_tree_view_get_selection(GTK_TREE_VIEW(qoi->view));
+		gtk_tree_selection_set_mode(qoi->selection, GTK_SELECTION_MULTIPLE);
+		g_signal_connect(G_OBJECT(qoi->selection), "changed", G_CALLBACK(evt_open_quick_selection_changed), qoi);
 
-		sel = gtk_tree_view_get_selection(GTK_TREE_VIEW(view));
-		gtk_tree_selection_set_mode(sel, GTK_SELECTION_MULTIPLE);
-		g_signal_connect(G_OBJECT(sel), "changed", G_CALLBACK(evt_open_quick_selection_changed), dlg);
+		gtk_tree_model_foreach(GTK_TREE_MODEL(gitbrowser.model), cb_tree_to_list, qoi->store);
 
 		gtk_widget_grab_focus(entry);
 	}
-	gtk_list_store_clear(GTK_LIST_STORE(store));
-	gtk_tree_model_foreach(GTK_TREE_MODEL(gitbrowser.model), cb_tree_to_list, store);
-	response = gtk_dialog_run(GTK_DIALOG(dlg));
+	response = gtk_dialog_run(GTK_DIALOG(qoi->dialog));
 	if(response == GTK_RESPONSE_OK)
 	{
-		GList		*selection = gtk_tree_selection_get_selected_rows(sel, NULL), *iter;
-		GtkTreeModel	*sort = gtk_tree_view_get_model(GTK_TREE_VIEW(view));
+		GList		*selection = gtk_tree_selection_get_selected_rows(qoi->selection, NULL), *iter;
 
 		for(iter = selection; iter != NULL; iter = g_list_next(iter))
 		{
 			GtkTreePath	*unsorted;
 
-			if((unsorted = gtk_tree_model_sort_convert_path_to_child_path(GTK_TREE_MODEL_SORT(sort), iter->data)) != NULL)
+			if((unsorted = gtk_tree_model_sort_convert_path_to_child_path(GTK_TREE_MODEL_SORT(qoi->sort), iter->data)) != NULL)
 			{
 				GtkTreeIter	here;
 
-				if(gtk_tree_model_get_iter(GTK_TREE_MODEL(store), &here, unsorted))
+				if(gtk_tree_model_get_iter(GTK_TREE_MODEL(qoi->store), &here, unsorted))
 				{
 					gchar	buf[2048], *dpath, *dname, *fn;
 					gint	len;
 
-					gtk_tree_model_get(GTK_TREE_MODEL(store), &here, 0, &dname, 1, &dpath, -1);
+					gtk_tree_model_get(GTK_TREE_MODEL(qoi->store), &here, 0, &dname, 1, &dpath, -1);
 					if((len = g_snprintf(buf, sizeof buf, "%s%s%s", dpath, G_DIR_SEPARATOR_S, dname)) < sizeof buf)
 					{
 						if((fn = g_filename_from_utf8(buf, (gssize) len, NULL, NULL, NULL)) != NULL)
@@ -231,7 +266,7 @@ static void cmd_repository_open_quick(GtkAction *action, gpointer user)
 		g_list_foreach(selection, (GFunc) gtk_tree_path_free, NULL);
 		g_list_free(selection);
 	}
-	gtk_widget_hide(dlg);
+	gtk_widget_hide(qoi->dialog);
 }
 
 static void cmd_repository_move_up(GtkAction *action, gpointer user)
@@ -383,6 +418,42 @@ gchar * tok_tokenize_next(gchar *text, gchar **endptr, gchar separator)
 		if(endptr != NULL)
 			*endptr = NULL;
 		return anchor;
+	}
+	return NULL;
+}
+
+/* -------------------------------------------------------------------------------------------------------------- */
+
+Repository * repository_new(const gchar *root_path)
+{
+	Repository	*r = g_malloc(sizeof *r);
+
+	g_strlcpy(r->root_path, root_path, sizeof r->root_path);
+
+	r->quick_open.dialog = NULL;
+	r->quick_open.selection = NULL;
+	r->quick_open.sort = NULL;
+	r->quick_open.store = NULL;
+	r->quick_open.view = NULL;
+
+	g_hash_table_insert(gitbrowser.repositories, r->root_path, r);
+
+	return r;
+}
+
+/* Returns the repository to which the given path belongs, or NULL if the path is not part of a repository. */
+Repository * repository_find_by_path(const gchar *path)
+{
+	GHashTableIter	iter;
+	gpointer	key, value;
+
+	g_hash_table_iter_init(&iter, gitbrowser.repositories);
+	while(g_hash_table_iter_next(&iter, &key, &value))
+	{
+		Repository	*repo = value;
+
+		if(strstr(path, repo->root_path) == path)
+			return repo;
 	}
 	return NULL;
 }
@@ -766,6 +837,7 @@ void plugin_init(GeanyData *geany_data)
 
 	gitbrowser.model = tree_model_new();
 	gitbrowser.view = tree_view_new(gitbrowser.model);
+	gitbrowser.repositories = g_hash_table_new(g_str_hash, g_str_equal);
 
 	scwin = gtk_scrolled_window_new(NULL, NULL);
 	gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scwin), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
