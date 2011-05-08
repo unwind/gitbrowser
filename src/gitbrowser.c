@@ -43,6 +43,7 @@ static struct
 
 gboolean	tree_model_find_repository(GtkTreeModel *model, const gchar *root_path, GtkTreeIter *iter);
 void		tree_model_build_repository(GtkTreeModel *model, GtkTreeIter *root, const gchar *root_path);
+gboolean	tree_model_open_document(GtkTreeModel *model, GtkTreePath *path);
 gboolean	tree_model_get_document_path(GtkTreeModel *model, const GtkTreeIter *iter, gchar *buf, gsize buf_max);
 
 /* -------------------------------------------------------------------------------------------------------------- */
@@ -140,21 +141,28 @@ static gboolean cb_tree_to_list(GtkTreeModel *model, GtkTreePath *path, GtkTreeI
 	return FALSE;
 }
 
+static void evt_open_quick_selection_changed(GtkTreeSelection *sel, gpointer user)
+{
+	gtk_dialog_set_response_sensitive(GTK_DIALOG(user), GTK_RESPONSE_OK, gtk_tree_selection_count_selected_rows(sel) > 0);
+}
+
 static void cmd_repository_open_quick(GtkAction *action, gpointer user)
 {
-	static GtkWidget	*dlg = NULL;
+	static GtkWidget	*dlg = NULL, *view = NULL;
 	static GtkListStore	*store = NULL;
-	GtkTreeModel		*sort;
-	GtkWidget		*vbox, *label, *scwin, *view, *entry;
-        GtkCellRenderer         *cr;
-        GtkTreeViewColumn       *vc;
+	static GtkTreeSelection	*sel = NULL;
         gint			response;
 
 	CMD_INIT("repository-open-quick", _("Quick Open ..."), _("Opens a document anywhere in the repository, with filtering."), GTK_STOCK_FIND);
 
 	if(dlg == NULL)
 	{
-		store = gtk_list_store_new(3, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING);
+		GtkTreeModel		*sort;
+		GtkWidget		*vbox, *label, *scwin, *entry;
+		GtkCellRenderer         *cr;
+		GtkTreeViewColumn       *vc;
+
+		store = gtk_list_store_new(2, G_TYPE_STRING, G_TYPE_STRING);
 		dlg = gtk_dialog_new_with_buttons(_("Git Repository Quick Open"), NULL, GTK_DIALOG_MODAL, GTK_STOCK_OK, GTK_RESPONSE_OK, GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL, NULL);
 		vbox = ui_dialog_vbox_new(GTK_DIALOG(dlg));
 		label = gtk_label_new(_("Select one or more document(s) to open. Type to filter filenames."));
@@ -178,6 +186,10 @@ static void cmd_repository_open_quick(GtkAction *action, gpointer user)
 
 		gtk_dialog_set_response_sensitive(GTK_DIALOG(dlg), GTK_RESPONSE_OK, FALSE);
 
+		sel = gtk_tree_view_get_selection(GTK_TREE_VIEW(view));
+		gtk_tree_selection_set_mode(sel, GTK_SELECTION_MULTIPLE);
+		g_signal_connect(G_OBJECT(sel), "changed", G_CALLBACK(evt_open_quick_selection_changed), dlg);
+
 		gtk_widget_grab_focus(entry);
 	}
 	gtk_list_store_clear(GTK_LIST_STORE(store));
@@ -185,6 +197,32 @@ static void cmd_repository_open_quick(GtkAction *action, gpointer user)
 	response = gtk_dialog_run(GTK_DIALOG(dlg));
 	if(response == GTK_RESPONSE_OK)
 	{
+		GList		*selection = gtk_tree_selection_get_selected_rows(sel, NULL), *iter;
+		GtkTreeModel	*sort = gtk_tree_view_get_model(GTK_TREE_VIEW(view));
+
+		for(iter = selection; iter != NULL; iter = g_list_next(iter))
+		{
+			GtkTreePath	*unsorted;
+
+			if((unsorted = gtk_tree_model_sort_convert_path_to_child_path(GTK_TREE_MODEL_SORT(sort), iter->data)) != NULL)
+			{
+				GtkTreeIter	here;
+
+				if(gtk_tree_model_get_iter(GTK_TREE_MODEL(store), &here, unsorted))
+				{
+					gchar	buf[2048], *path, *name;
+
+					gtk_tree_model_get(GTK_TREE_MODEL(store), &here, 0, &name, 1, &path, -1);
+					g_snprintf(buf, sizeof buf, "%s%s%s", path, G_DIR_SEPARATOR_S, name);
+					document_open_file(buf, FALSE, NULL, NULL);
+					g_free(name);
+					g_free(path);
+				}
+				gtk_tree_path_free(unsorted);
+			}
+		}
+		g_list_foreach(selection, (GFunc) gtk_tree_path_free, NULL);
+		g_list_free(selection);
 	}
 	gtk_widget_hide(dlg);
 }
@@ -247,31 +285,9 @@ static void cmd_dir_collapse(GtkAction *action, gpointer user)
 
 static void cmd_file_open(GtkAction *action, gpointer user)
 {
-	GtkTreeIter	iter, child;
-
 	CMD_INIT("file-open", _("Open"), _("Opens a file as a new document, or focuses the document if already opened."), GTK_STOCK_OPEN);
 
-	if(gtk_tree_model_get_iter(gitbrowser.model, &iter, gitbrowser.click_path))
-	{
-		GString	*path = g_string_sized_new(1024);
-		gchar	*component;
-
-		/* Walk towards the root, building the filename as we go. */
-		do
-		{
-			gtk_tree_model_get(gitbrowser.model, &iter, 1, &component, -1);
-			if(component != NULL)
-			{
-				if(path->len > 0)
-					g_string_prepend(path, G_DIR_SEPARATOR_S);
-				g_string_prepend(path, component);
-				g_free(component);
-			}
-			child = iter;
-		} while(gtk_tree_model_iter_parent(gitbrowser.model, &iter, &child));
-		document_open_file(path->str, FALSE, NULL, NULL);
-		g_string_free(path, TRUE);
-	}
+	tree_model_open_document(gitbrowser.model, gitbrowser.click_path);
 }
 
 void init_commands(GtkAction **actions)
@@ -528,6 +544,35 @@ static void tree_model_build_traverse(GtkTreeModel *model, GNode *root, GtkTreeI
 		gtk_tree_store_set(GTK_TREE_STORE(model), &iter, 0, dname, 1, child->data,-1);
 		g_free(dname);
 	}
+}
+
+gboolean tree_model_open_document(GtkTreeModel *model, GtkTreePath *path)
+{
+	GtkTreeIter	iter, child;
+
+	if(gtk_tree_model_get_iter(model, &iter, path))
+	{
+		GString	*path = g_string_sized_new(1024);
+		gchar	*component;
+
+		/* Walk towards the root, building the filename as we go. */
+		do
+		{
+			gtk_tree_model_get(model, &iter, 1, &component, -1);
+			if(component != NULL)
+			{
+				if(path->len > 0)
+					g_string_prepend(path, G_DIR_SEPARATOR_S);
+				g_string_prepend(path, component);
+				g_free(component);
+			}
+			child = iter;
+		} while(gtk_tree_model_iter_parent(model, &iter, &child));
+		document_open_file(path->str, FALSE, NULL, NULL);
+		g_string_free(path, TRUE);
+		return TRUE;
+	}
+	return FALSE;
 }
 
 /* Gets the full path, in the local system's encoding, for the indicated document. Returns FALSE if given an inner node. */
