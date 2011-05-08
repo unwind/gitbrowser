@@ -141,6 +141,7 @@ static gboolean cb_tree_to_list(GtkTreeModel *model, GtkTreePath *path, GtkTreeI
 static void cmd_repository_open_quick(GtkAction *action, gpointer user)
 {
 	GtkListStore		*store;
+	GtkTreeModel		*sort;
 	GtkWidget		*dlg, *vbox, *label, *scwin, *view, *entry;
         GtkCellRenderer         *cr;
         GtkTreeViewColumn       *vc;
@@ -154,11 +155,14 @@ static void cmd_repository_open_quick(GtkAction *action, gpointer user)
 	vbox = ui_dialog_vbox_new(GTK_DIALOG(dlg));
 	label = gtk_label_new(_("Select one or more document(s) to open. Type to filter filenames."));
 	gtk_box_pack_start(GTK_BOX(vbox), label, FALSE, FALSE, 0);
-	view = gtk_tree_view_new_with_model(GTK_TREE_MODEL(store));
+	sort = gtk_tree_model_sort_new_with_model(GTK_TREE_MODEL(store));
+	view = gtk_tree_view_new_with_model(GTK_TREE_MODEL(sort));
 	cr = gtk_cell_renderer_text_new();
 	vc = gtk_tree_view_column_new_with_attributes(_("Filename"), cr, "text", 0, NULL);
+	gtk_tree_view_column_set_sort_column_id(vc, 0);
 	gtk_tree_view_append_column(GTK_TREE_VIEW(view), vc);
 	vc = gtk_tree_view_column_new_with_attributes(_("Location"), cr, "text", 1, NULL);
+	gtk_tree_view_column_set_sort_column_id(vc, 1);
 	gtk_tree_view_append_column(GTK_TREE_VIEW(view), vc);
 	scwin = gtk_scrolled_window_new(NULL, NULL);
 	gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scwin), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
