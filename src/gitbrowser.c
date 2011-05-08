@@ -72,7 +72,40 @@ gboolean	tree_model_get_document_path(GtkTreeModel *model, const GtkTreeIter *it
 
 static void cmd_repository_add_activate(GtkAction *action, gpointer user)
 {
+	static GtkWidget	*dialog = NULL;
+	gint			response;
+
 	CMD_INIT("repository-add", _("Add..."), _("Add a new repository based on a filesystem location."), GTK_STOCK_ADD)
+	if(dialog == NULL)
+	{
+		dialog = gtk_file_chooser_dialog_new(_("Add Repository"), NULL, GTK_FILE_CHOOSER_ACTION_SELECT_FOLDER, GTK_STOCK_OK, GTK_RESPONSE_OK, GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL, NULL);
+	}
+	response = gtk_dialog_run(GTK_DIALOG(dialog));
+	gtk_widget_hide(dialog);
+	if(response == GTK_RESPONSE_OK)
+	{
+		gchar	*path = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog));
+
+		if(path != NULL)
+		{
+			gchar	*git;
+
+			/* Not already loaded? */
+			if(repository_find_by_path(path) == NULL)
+			{
+				/* Does it even have a ".git" directory in it? */
+				git = g_build_filename(path, ".git", NULL);
+				if(g_file_test(git, G_FILE_TEST_IS_DIR))
+				{
+					Repository	*repo = repository_new(path);
+
+					tree_model_build_repository(gitbrowser.model, NULL, repo->root_path);
+				}
+				g_free(git);
+			}
+			g_free(path);
+		}
+	}
 }
 
 static void cmd_repository_add_from_document_activate(GtkAction *action, gpointer user)
