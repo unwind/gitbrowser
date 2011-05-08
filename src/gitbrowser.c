@@ -20,6 +20,8 @@ enum
 	CMD_REPOSITORY_ADD_FROM_DOCUMENT,
 	CMD_REPOSITORY_REMOVE,
 	CMD_REPOSITORY_OPEN_QUICK,
+	CMD_REPOSITORY_MOVE_UP,
+	CMD_REPOSITORY_MOVE_DOWN,
 
 	CMD_DIR_EXPAND,
 	CMD_DIR_COLLAPSE,
@@ -182,6 +184,48 @@ static void cmd_repository_open_quick(GtkAction *action, gpointer user)
 	gtk_widget_destroy(dlg);
 }
 
+static void cmd_repository_move_up(GtkAction *action, gpointer user)
+{
+	GtkTreeIter	here;
+
+	CMD_INIT("repository-move-up", _("Move Up"), _("Moves a repository up in the list."), GTK_STOCK_GO_UP);
+
+	if(gtk_tree_model_get_iter(GTK_TREE_MODEL(gitbrowser.model), &here, gitbrowser.click_path))
+	{
+		GtkTreePath	*path_prev;
+		GtkTreeIter	prev;
+
+		path_prev = gtk_tree_path_copy(gitbrowser.click_path);
+		if(gtk_tree_path_prev(path_prev))
+		{
+			if(gtk_tree_model_get_iter(GTK_TREE_MODEL(gitbrowser.model), &prev, path_prev))
+				gtk_tree_store_move_before(GTK_TREE_STORE(gitbrowser.model), &here, &prev);
+		}
+		gtk_tree_path_free(path_prev);
+	}
+}
+
+static void cmd_repository_move_down(GtkAction *action, gpointer user)
+{
+	GtkTreeIter	here;
+
+	CMD_INIT("repository-move-down", _("Move Down"), _("Moves a repository down in the list."), GTK_STOCK_GO_DOWN);
+
+	if(gtk_tree_model_get_iter(GTK_TREE_MODEL(gitbrowser.model), &here, gitbrowser.click_path))
+	{
+		GtkTreePath	*path_next;
+		GtkTreeIter	next;
+
+		path_next = gtk_tree_path_copy(gitbrowser.click_path);
+		if(gtk_tree_path_prev(path_next))
+		{
+			if(gtk_tree_model_get_iter(GTK_TREE_MODEL(gitbrowser.model), &next, path_next))
+				gtk_tree_store_move_after(GTK_TREE_STORE(gitbrowser.model), &here, &next);
+		}
+		gtk_tree_path_free(path_next);
+	}
+}
+
 static void cmd_dir_expand(GtkAction *action, gpointer user)
 {
 	CMD_INIT("dir-expand", _("Expand"), _("Expands a directory node."), NULL);
@@ -233,6 +277,8 @@ void init_commands(GtkAction **actions)
 		cmd_repository_add_from_document_activate,
 		cmd_repository_remove,
 		cmd_repository_open_quick,
+		cmd_repository_move_up,
+		cmd_repository_move_down,
 		cmd_dir_expand,
 		cmd_dir_collapse,
 		cmd_file_open,
@@ -548,8 +594,12 @@ static void menu_popup_repository(GdkEventButton *evt)
 {
 	GtkWidget	*menu = menu_popup_create();
 
-	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_action_create_menu_item(gitbrowser.actions[CMD_REPOSITORY_REMOVE]));
 	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_action_create_menu_item(gitbrowser.actions[CMD_REPOSITORY_OPEN_QUICK]));
+	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_separator_menu_item_new());
+	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_action_create_menu_item(gitbrowser.actions[CMD_REPOSITORY_MOVE_UP]));
+	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_action_create_menu_item(gitbrowser.actions[CMD_REPOSITORY_MOVE_DOWN]));
+	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_separator_menu_item_new());
+	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_action_create_menu_item(gitbrowser.actions[CMD_REPOSITORY_REMOVE]));
 	gtk_widget_show_all(menu);
 
 	gtk_menu_popup(GTK_MENU(menu), NULL, NULL, NULL, NULL, evt->button, evt->time);
