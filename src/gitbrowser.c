@@ -210,13 +210,20 @@ static void cmd_repository_open_quick(GtkAction *action, gpointer user)
 
 				if(gtk_tree_model_get_iter(GTK_TREE_MODEL(store), &here, unsorted))
 				{
-					gchar	buf[2048], *path, *name;
+					gchar	buf[2048], *dpath, *dname, *fn;
+					gint	len;
 
-					gtk_tree_model_get(GTK_TREE_MODEL(store), &here, 0, &name, 1, &path, -1);
-					g_snprintf(buf, sizeof buf, "%s%s%s", path, G_DIR_SEPARATOR_S, name);
-					document_open_file(buf, FALSE, NULL, NULL);
-					g_free(name);
-					g_free(path);
+					gtk_tree_model_get(GTK_TREE_MODEL(store), &here, 0, &dname, 1, &dpath, -1);
+					if((len = g_snprintf(buf, sizeof buf, "%s%s%s", dpath, G_DIR_SEPARATOR_S, dname)) < sizeof buf)
+					{
+						if((fn = g_filename_from_utf8(buf, (gssize) len, NULL, NULL, NULL)) != NULL)
+						{
+							document_open_file(buf, FALSE, NULL, NULL);
+							g_free(fn);
+						}
+					}
+					g_free(dname);
+					g_free(dpath);
 				}
 				gtk_tree_path_free(unsorted);
 			}
