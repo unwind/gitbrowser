@@ -591,8 +591,8 @@ gboolean tree_model_find_repository(GtkTreeModel *model, const gchar *root_path,
 	return found;
 }
 
-static void	tree_model_build_populate(GtkTreeModel *model, gchar *lines, GtkTreeIter *parent);
-static void	tree_model_build_traverse(GtkTreeModel *model, GNode *root, GtkTreeIter *parent);
+static guint	tree_model_build_populate(GtkTreeModel *model, gchar *lines, GtkTreeIter *parent);
+static guint	tree_model_build_traverse(GtkTreeModel *model, GNode *root, GtkTreeIter *parent);
 
 void tree_model_build_repository(GtkTreeModel *model, GtkTreeIter *repo, const gchar *root_path)
 {
@@ -600,6 +600,7 @@ void tree_model_build_repository(GtkTreeModel *model, GtkTreeIter *repo, const g
 	const gchar	*slash;
 	gchar		*git_ls_files[] = { "git", "ls-files", NULL };
 	gchar		*git_stdout = NULL, *git_stderr = NULL;
+	GTimer		*timer;
 
 	slash = strrchr(root_path, G_DIR_SEPARATOR);
 	if(slash == NULL)
@@ -621,11 +622,12 @@ void tree_model_build_repository(GtkTreeModel *model, GtkTreeIter *repo, const g
 	gtk_tree_store_set(GTK_TREE_STORE(model), repo, 0, slash, 1, root_path,-1);
 
 	/* Now list the repository, and build a tree representation. Easy-peasy, right? */
+	timer = g_timer_new();
 	if(subprocess_run(root_path, git_ls_files, NULL, &git_stdout, &git_stderr))
 	{
 		GtkTreePath	*path;
+		guint		counter = tree_model_build_populate(model, git_stdout, repo);
 
-		tree_model_build_populate(model, git_stdout, repo);
 		g_free(git_stdout);
 		g_free(git_stderr);
 
@@ -633,7 +635,9 @@ void tree_model_build_repository(GtkTreeModel *model, GtkTreeIter *repo, const g
 		gtk_tree_view_expand_to_path(GTK_TREE_VIEW(gitbrowser.view), path);
 		gtk_tree_view_set_cursor_on_cell(GTK_TREE_VIEW(gitbrowser.view), path, NULL, NULL, FALSE);
 		gtk_tree_path_free(path);
+		msgwin_status_add(_("Built repository \"%s\", %lu files added in %.1f ms."), slash, (unsigned long) counter, 1e3 * g_timer_elapsed(timer, NULL));
 	}
+	g_timer_destroy(timer);
 }
 
 /* Look for a child with the given text as its data; if not found it's added in the proper location and returned. */
@@ -660,10 +664,11 @@ static GNode * get_child(GNode *root, const gchar *text)
 	return g_node_append_data(root, (gpointer) text);
 }
 
-static void tree_model_build_populate(GtkTreeModel *model, gchar *lines, GtkTreeIter *parent)
+static guint tree_model_build_populate(GtkTreeModel *model, gchar *lines, GtkTreeIter *parent)
 {
 	gchar	*line, *nextline, *dir, *endptr;
 	GNode	*root = g_node_new(""), *prev;
+	guint	count;
 
 	/* Let's cheat: build a GNode n:ary tree first, then use that to build GtkTreeModel data. */
 	while((line = tok_tokenize_next(lines, &nextline, '\n')) != NULL)
@@ -679,18 +684,20 @@ static void tree_model_build_populate(GtkTreeModel *model, gchar *lines, GtkTree
 			get_child(root, line);
 		lines = nextline;
 	}
-	tree_model_build_traverse(model, root, parent);
+	count = tree_model_build_traverse(model, root, parent);
 	g_node_destroy(root);
+	return count;
 }
 
 /* Traverse the children of the given GNode tree, and build a corresponding GtkTreeModel.
  * The traversal order is special: inner nodes first, to group directories on top.
 */
-static void tree_model_build_traverse(GtkTreeModel *model, GNode *root, GtkTreeIter *parent)
+static guint tree_model_build_traverse(GtkTreeModel *model, GNode *root, GtkTreeIter *parent)
 {
 	GNode		*child;
 	GtkTreeIter	iter;
 	gchar		*dname;
+	guint		count = 0;
 
 	/* Inner nodes. */
 	for(child = g_node_first_child(root); child != NULL; child = g_node_next_sibling(child))
@@ -702,7 +709,7 @@ static void tree_model_build_traverse(GtkTreeModel *model, GNode *root, GtkTreeI
 		dname = g_filename_display_name(child->data);
 		gtk_tree_store_set(GTK_TREE_STORE(model), &iter, 0, dname, 1, child->data,-1);
 		g_free(dname);
-		tree_model_build_traverse(model, child, &iter);
+		count += tree_model_build_traverse(model, child, &iter);	/* Don't count inner node itself. */
 	}
 	/* Leaves. */
 	for(child = g_node_first_child(root); child != NULL; child = g_node_next_sibling(child))
@@ -713,7 +720,9 @@ static void tree_model_build_traverse(GtkTreeModel *model, GNode *root, GtkTreeI
 		dname = g_filename_display_name(child->data);
 		gtk_tree_store_set(GTK_TREE_STORE(model), &iter, 0, dname, 1, child->data,-1);
 		g_free(dname);
+		count += 1;
 	}
+	return count;
 }
 
 gboolean tree_model_open_document(GtkTreeModel *model, GtkTreePath *path)
