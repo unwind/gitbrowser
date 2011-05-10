@@ -452,12 +452,58 @@ static gboolean cb_open_quick_filter(GtkTreeModel *model, GtkTreeIter *iter, gpo
 	return ret;
 }
 
-static void evt_open_quick_entry_changed(GtkWidget *wid, gpointer user)
+static void open_quick_move_cursor(QuickOpenInfo *qoi, gint delta)
+{
+	GtkTreePath	*path = NULL;
+
+	gtk_tree_view_get_cursor(GTK_TREE_VIEW(qoi->view), &path, NULL);
+	if(path != NULL)
+	{
+		gboolean	set = TRUE;
+
+		if(delta == -1)
+			set = gtk_tree_path_prev(path);
+		else if(delta == 1)
+			gtk_tree_path_next(path);
+		if(set)
+			gtk_tree_view_set_cursor_on_cell(GTK_TREE_VIEW(qoi->view), path, NULL, NULL, FALSE);
+		gtk_tree_path_free(path);
+	}
+}
+
+static gboolean evt_open_quick_entry_key_press(GtkWidget *wid, GdkEventKey *evt, gpointer user)
 {
 	QuickOpenInfo	*qoi = user;
 
+	if(evt->type == GDK_KEY_PRESS)
+	{
+		if(evt->keyval == GDK_KEY_Up)
+		{
+			open_quick_move_cursor(qoi, -1);
+			return TRUE;
+		}
+		else if(evt->keyval == GDK_KEY_Down)
+		{
+			open_quick_move_cursor(qoi, 1);
+			return TRUE;
+		}
+		else if(ui_is_keyval_enter_or_return(evt->keyval))
+			gtk_dialog_response(GTK_DIALOG(qoi->dialog), GTK_RESPONSE_OK);
+	}
+	return FALSE;
+}
+
+static void evt_open_quick_entry_changed(GtkWidget *wid, gpointer user)
+{
+	QuickOpenInfo	*qoi = user;
+	GtkTreePath	*first;
+
 	g_strlcpy(qoi->filter_text, gtk_entry_buffer_get_text(gtk_entry_get_buffer(GTK_ENTRY(wid))), sizeof qoi->filter_text);
 	gtk_tree_model_filter_refilter(GTK_TREE_MODEL_FILTER(qoi->filter));
+
+	first = gtk_tree_path_new_first();
+	gtk_tree_view_set_cursor(GTK_TREE_VIEW(qoi->view), first, NULL, FALSE);
+	gtk_tree_path_free(first);
 }
 
 void repository_open_quick(Repository *repo)
@@ -496,6 +542,7 @@ void repository_open_quick(Repository *repo)
 		gtk_container_add(GTK_CONTAINER(scwin), qoi->view);
 		gtk_box_pack_start(GTK_BOX(vbox), scwin, TRUE, TRUE, 0);
 		entry = gtk_entry_new();
+		g_signal_connect(G_OBJECT(entry), "key-press-event", G_CALLBACK(evt_open_quick_entry_key_press), qoi);
 		g_signal_connect(G_OBJECT(entry), "changed", G_CALLBACK(evt_open_quick_entry_changed), qoi);
 		gtk_box_pack_start(GTK_BOX(vbox), entry, FALSE, FALSE, 0);
 
