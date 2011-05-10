@@ -1,6 +1,8 @@
 
 #include <string.h>
 
+#include <gdk/gdkkeysyms.h>
+
 #include "geanyplugin.h"
 
 GeanyPlugin         *geany_plugin;
@@ -52,8 +54,11 @@ static struct
 	GtkTreeModel	*model;
 	GtkWidget	*view;
 	GtkAction	*actions[NUM_COMMANDS];
+	GtkWidget	*action_menu_items[NUM_COMMANDS];
 	GtkTreePath	*click_path;
 	GHashTable	*repositories;		/* Hashed on root path. */
+
+	GeanyKeyGroup	*key_group;
 } gitbrowser;
 
 /* -------------------------------------------------------------------------------------------------------------- */
@@ -262,7 +267,7 @@ static void cmd_file_open(GtkAction *action, gpointer user)
 	tree_model_open_document(gitbrowser.model, gitbrowser.click_path);
 }
 
-void init_commands(GtkAction **actions)
+void init_commands(GtkAction **actions, GtkWidget **menu_items)
 {
 	typedef void (*ActivateOrCreate)(GtkAction *action, gpointer user);
 	const ActivateOrCreate funcs[] = {
@@ -283,6 +288,8 @@ void init_commands(GtkAction **actions)
 	{
 		funcs[i](NULL, &actions[i]);
 		g_signal_connect(G_OBJECT(actions[i]), "activate", G_CALLBACK(funcs[i]), NULL);
+		menu_items[i] = gtk_action_create_menu_item(actions[i]);
+		gtk_widget_show(menu_items[i]);
 	}
 }
 
@@ -747,6 +754,19 @@ static gboolean evt_menu_selection_done(GtkWidget *wid, gpointer user)
 	return FALSE;
 }
 
+/* On deactivation, remove all widgets that are not separators, so they aren't destroyed. */
+static void evt_menu_deactivate(GtkWidget *wid, gpointer user)
+{
+	GList	*children = gtk_container_get_children(GTK_CONTAINER(wid)), *iter;
+
+	for(iter = children; iter != NULL; iter = g_list_next(iter))
+	{
+		if(G_OBJECT_TYPE(G_OBJECT(iter->data)) != GTK_TYPE_SEPARATOR_MENU_ITEM)
+			gtk_container_remove(GTK_CONTAINER(wid), iter->data);
+	}
+	g_list_free(children);
+}
+
 /* Creates a new popup menu suitable for use in our tree, and connects the selection-done signal. */
 static GtkWidget * menu_popup_create(void)
 {
@@ -754,6 +774,8 @@ static GtkWidget * menu_popup_create(void)
 
 	menu = gtk_menu_new();
 	g_signal_connect(G_OBJECT(menu), "selection_done", G_CALLBACK(evt_menu_selection_done), NULL);
+	g_signal_connect(G_OBJECT(menu), "deactivate", G_CALLBACK(evt_menu_deactivate), NULL);
+
 	return menu;
 }
 
@@ -761,11 +783,10 @@ static void menu_popup_repositories(GdkEventButton *evt)
 {
 	GtkWidget	*menu = menu_popup_create();
 
-	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_action_create_menu_item(gitbrowser.actions[CMD_REPOSITORY_OPEN_QUICK_FROM_DOCUMENT]));
+	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.action_menu_items[CMD_REPOSITORY_OPEN_QUICK_FROM_DOCUMENT]);
 	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_separator_menu_item_new());
-	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_action_create_menu_item(gitbrowser.actions[CMD_REPOSITORY_ADD]));
-	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_action_create_menu_item(gitbrowser.actions[CMD_REPOSITORY_ADD_FROM_DOCUMENT]));
-	gtk_widget_show_all(menu);
+	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.action_menu_items[CMD_REPOSITORY_ADD]);
+	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.action_menu_items[CMD_REPOSITORY_ADD_FROM_DOCUMENT]);
 
 	gtk_menu_popup(GTK_MENU(menu), NULL, NULL, NULL, NULL, evt->button, evt->time);
 }
@@ -774,13 +795,12 @@ static void menu_popup_repository(GdkEventButton *evt)
 {
 	GtkWidget	*menu = menu_popup_create();
 
-	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_action_create_menu_item(gitbrowser.actions[CMD_REPOSITORY_OPEN_QUICK]));
+	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.action_menu_items[CMD_REPOSITORY_OPEN_QUICK]);
 	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_separator_menu_item_new());
-	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_action_create_menu_item(gitbrowser.actions[CMD_REPOSITORY_MOVE_UP]));
-	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_action_create_menu_item(gitbrowser.actions[CMD_REPOSITORY_MOVE_DOWN]));
+	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.action_menu_items[CMD_REPOSITORY_MOVE_UP]);
+	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.action_menu_items[CMD_REPOSITORY_MOVE_DOWN]);
 	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_separator_menu_item_new());
-	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_action_create_menu_item(gitbrowser.actions[CMD_REPOSITORY_REMOVE]));
-	gtk_widget_show_all(menu);
+	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.action_menu_items[CMD_REPOSITORY_REMOVE]);
 
 	gtk_menu_popup(GTK_MENU(menu), NULL, NULL, NULL, NULL, evt->button, evt->time);
 }
@@ -789,9 +809,8 @@ static void menu_popup_directory(GdkEventButton *evt)
 {
 	GtkWidget	*menu = menu_popup_create();
 
-	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_action_create_menu_item(gitbrowser.actions[CMD_DIR_EXPAND]));
-	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_action_create_menu_item(gitbrowser.actions[CMD_DIR_COLLAPSE]));
-	gtk_widget_show_all(menu);
+	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.action_menu_items[CMD_DIR_EXPAND]);
+	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.action_menu_items[CMD_DIR_COLLAPSE]);
 
 	gtk_menu_popup(GTK_MENU(menu), NULL, NULL, NULL, NULL, evt->button, evt->time);
 }
@@ -801,7 +820,6 @@ static void menu_popup_file(GdkEventButton *evt)
 	GtkWidget	*menu = menu_popup_create();
 
 	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_action_create_menu_item(gitbrowser.actions[CMD_FILE_OPEN]));
-	gtk_widget_show_all(menu);
 
 	gtk_menu_popup(GTK_MENU(menu), NULL, NULL, NULL, NULL, evt->button, evt->time);
 }
@@ -881,15 +899,29 @@ GtkWidget * tree_view_new(GtkTreeModel *model)
 
 /* -------------------------------------------------------------------------------------------------------------- */
 
+static gboolean evt_key_group_callback(guint key_id)
+{
+	switch(key_id)
+	{
+	case 0:
+		gtk_action_activate(gitbrowser.actions[CMD_REPOSITORY_OPEN_QUICK_FROM_DOCUMENT]);
+		return TRUE;
+	}
+	return FALSE;
+}
+
 void plugin_init(GeanyData *geany_data)
 {
 	GtkWidget	*scwin;
 
-	init_commands(gitbrowser.actions);
+	init_commands(gitbrowser.actions, gitbrowser.action_menu_items);
 
 	gitbrowser.model = tree_model_new();
 	gitbrowser.view = tree_view_new(gitbrowser.model);
 	gitbrowser.repositories = g_hash_table_new(g_str_hash, g_str_equal);
+
+	gitbrowser.key_group = plugin_set_key_group(geany_plugin, "gitbrowser", 1, evt_key_group_callback);
+	keybindings_set_item(gitbrowser.key_group, 0, NULL, GDK_KEY_O, GDK_SHIFT_MASK | GDK_MOD1_MASK, "repository-open-quick-from-document", _("Quick Open from Document"), gitbrowser.action_menu_items[CMD_REPOSITORY_OPEN_QUICK_FROM_DOCUMENT]);
 
 	scwin = gtk_scrolled_window_new(NULL, NULL);
 	gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scwin), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
