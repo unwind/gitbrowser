@@ -2,7 +2,7 @@
 # Ultra-trivial Makefile.
 #
 
-CFLAGS=`pkg-config --cflags geany` -fPIC -Wall -pedantic
+CFLAGS=`pkg-config --cflags geany` -fPIC -Wall -pedantic -g
 LDLIBS=`pkg-config --libs geany`
 
 .PHONY:		clean
