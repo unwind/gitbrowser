@@ -40,7 +40,9 @@ typedef struct
 	GtkWidget		*view;
 	GtkTreeSelection	*selection;
 	GtkListStore		*store;
+	GtkTreeModel		*filter;
 	GtkTreeModel		*sort;
+	gchar			filter_text[128];	/* Cached so we don't need to query GtkEntry on each filter callback. */
 } QuickOpenInfo;
 
 typedef struct
@@ -369,10 +371,12 @@ Repository * repository_new(const gchar *root_path)
 	g_strlcpy(r->root_path, root_path, sizeof r->root_path);
 
 	r->quick_open.dialog = NULL;
+	r->quick_open.filter = NULL;
 	r->quick_open.selection = NULL;
 	r->quick_open.sort = NULL;
 	r->quick_open.store = NULL;
 	r->quick_open.view = NULL;
+	r->quick_open.filter_text[0] = '\0';
 
 	g_hash_table_insert(gitbrowser.repositories, r->root_path, r);
 
@@ -430,6 +434,32 @@ static void evt_open_quick_selection_changed(GtkTreeSelection *sel, gpointer use
 	gtk_dialog_set_response_sensitive(GTK_DIALOG(qoi->dialog), GTK_RESPONSE_OK, gtk_tree_selection_count_selected_rows(sel) > 0);
 }
 
+static gboolean cb_open_quick_filter(GtkTreeModel *model, GtkTreeIter *iter, gpointer user)
+{
+	QuickOpenInfo	*qoi = user;
+	gchar		*name;
+	gboolean	ret;
+
+	gtk_tree_model_get(model, iter, 0, &name, -1);
+	if(name != NULL)
+	{
+		ret = strstr(name, qoi->filter_text) != NULL;
+		g_free(name);
+	}
+	else
+		ret = TRUE;
+
+	return ret;
+}
+
+static void evt_open_quick_entry_changed(GtkWidget *wid, gpointer user)
+{
+	QuickOpenInfo	*qoi = user;
+
+	g_strlcpy(qoi->filter_text, gtk_entry_buffer_get_text(gtk_entry_get_buffer(GTK_ENTRY(wid))), sizeof qoi->filter_text);
+	gtk_tree_model_filter_refilter(GTK_TREE_MODEL_FILTER(qoi->filter));
+}
+
 void repository_open_quick(Repository *repo)
 {
 	QuickOpenInfo	*qoi;
@@ -450,7 +480,9 @@ void repository_open_quick(Repository *repo)
 		vbox = ui_dialog_vbox_new(GTK_DIALOG(qoi->dialog));
 		label = gtk_label_new(_("Select one or more document(s) to open. Type to filter filenames."));
 		gtk_box_pack_start(GTK_BOX(vbox), label, FALSE, FALSE, 0);
-		qoi->sort = gtk_tree_model_sort_new_with_model(GTK_TREE_MODEL(qoi->store));
+		qoi->filter = gtk_tree_model_filter_new(GTK_TREE_MODEL(qoi->store), NULL);
+		gtk_tree_model_filter_set_visible_func(GTK_TREE_MODEL_FILTER(qoi->filter), cb_open_quick_filter, qoi, NULL);
+		qoi->sort = gtk_tree_model_sort_new_with_model(GTK_TREE_MODEL(qoi->filter));
 		qoi->view = gtk_tree_view_new_with_model(GTK_TREE_MODEL(qoi->sort));
 		cr = gtk_cell_renderer_text_new();
 		vc = gtk_tree_view_column_new_with_attributes(_("Filename"), cr, "text", 0, NULL);
@@ -464,6 +496,7 @@ void repository_open_quick(Repository *repo)
 		gtk_container_add(GTK_CONTAINER(scwin), qoi->view);
 		gtk_box_pack_start(GTK_BOX(vbox), scwin, TRUE, TRUE, 0);
 		entry = gtk_entry_new();
+		g_signal_connect(G_OBJECT(entry), "changed", G_CALLBACK(evt_open_quick_entry_changed), qoi);
 		gtk_box_pack_start(GTK_BOX(vbox), entry, FALSE, FALSE, 0);
 
 		gtk_dialog_set_response_sensitive(GTK_DIALOG(qoi->dialog), GTK_RESPONSE_OK, FALSE);
