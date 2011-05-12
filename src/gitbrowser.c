@@ -930,7 +930,7 @@ static void menu_popup_file(GdkEventButton *evt)
 {
 	GtkWidget	*menu = menu_popup_create();
 
-	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_action_create_menu_item(gitbrowser.actions[CMD_FILE_OPEN]));
+	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.action_menu_items[CMD_FILE_OPEN]);
 
 	gtk_menu_popup(GTK_MENU(menu), NULL, NULL, NULL, NULL, evt->button, evt->time);
 }
