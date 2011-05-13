@@ -266,11 +266,9 @@ static void cmd_repository_move_down(GtkAction *action, gpointer user)
 		GtkTreeIter	next;
 
 		path_next = gtk_tree_path_copy(gitbrowser.click_path);
-		if(gtk_tree_path_prev(path_next))
-		{
-			if(gtk_tree_model_get_iter(GTK_TREE_MODEL(gitbrowser.model), &next, path_next))
-				gtk_tree_store_move_after(GTK_TREE_STORE(gitbrowser.model), &here, &next);
-		}
+		gtk_tree_path_next(path_next);
+		if(gtk_tree_model_get_iter(GTK_TREE_MODEL(gitbrowser.model), &next, path_next))
+			gtk_tree_store_move_after(GTK_TREE_STORE(gitbrowser.model), &here, &next);
 		gtk_tree_path_free(path_next);
 	}
 }
