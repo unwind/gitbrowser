@@ -507,6 +507,24 @@ static gboolean cb_open_quick_filter(GtkTreeModel *model, GtkTreeIter *iter, gpo
 	return ret;
 }
 
+static void evt_open_quick_entry_changed(GtkWidget *wid, gpointer user)
+{
+	QuickOpenInfo	*qoi = user;
+	GtkTreePath	*first;
+
+	g_strlcpy(qoi->filter_text, gtk_entry_buffer_get_text(gtk_entry_get_buffer(GTK_ENTRY(wid))), sizeof qoi->filter_text);
+	gtk_tree_model_filter_refilter(GTK_TREE_MODEL_FILTER(qoi->filter));
+
+	first = gtk_tree_path_new_first();
+	gtk_tree_view_set_cursor(GTK_TREE_VIEW(qoi->view), first, NULL, FALSE);
+	gtk_tree_path_free(first);
+}
+
+static void evt_open_quick_entry_icon_release(GtkWidget *wid, GtkEntryIconPosition position, GdkEvent *evt, gpointer user)
+{
+	gtk_entry_set_text(GTK_ENTRY(wid), "");	/* There's only one icon, so no need to figure out which was clicked. */
+}
+
 static gboolean evt_open_quick_entry_key_press(GtkWidget *wid, GdkEventKey *evt, gpointer user)
 {
 	QuickOpenInfo	*qoi = user;
@@ -532,19 +550,6 @@ static gboolean evt_open_quick_entry_key_press(GtkWidget *wid, GdkEventKey *evt,
 		}
 	}
 	return FALSE;
-}
-
-static void evt_open_quick_entry_changed(GtkWidget *wid, gpointer user)
-{
-	QuickOpenInfo	*qoi = user;
-	GtkTreePath	*first;
-
-	g_strlcpy(qoi->filter_text, gtk_entry_buffer_get_text(gtk_entry_get_buffer(GTK_ENTRY(wid))), sizeof qoi->filter_text);
-	gtk_tree_model_filter_refilter(GTK_TREE_MODEL_FILTER(qoi->filter));
-
-	first = gtk_tree_path_new_first();
-	gtk_tree_view_set_cursor(GTK_TREE_VIEW(qoi->view), first, NULL, FALSE);
-	gtk_tree_path_free(first);
 }
 
 void repository_open_quick(Repository *repo)
@@ -589,8 +594,10 @@ void repository_open_quick(Repository *repo)
 		gtk_box_pack_start(GTK_BOX(vbox), scwin, TRUE, TRUE, 0);
 		entry = gtk_entry_new();
 		gtk_entry_set_activates_default(GTK_ENTRY(entry), TRUE);
-		g_signal_connect(G_OBJECT(entry), "key-press-event", G_CALLBACK(evt_open_quick_entry_key_press), qoi);
+		gtk_entry_set_icon_from_stock(GTK_ENTRY(entry), GTK_ENTRY_ICON_SECONDARY, GTK_STOCK_CLEAR);
 		g_signal_connect(G_OBJECT(entry), "changed", G_CALLBACK(evt_open_quick_entry_changed), qoi);
+		g_signal_connect(G_OBJECT(entry), "key-press-event", G_CALLBACK(evt_open_quick_entry_key_press), qoi);
+		g_signal_connect(G_OBJECT(entry), "icon-release", G_CALLBACK(evt_open_quick_entry_icon_release), qoi);
 		gtk_box_pack_start(GTK_BOX(vbox), entry, FALSE, FALSE, 0);
 
 		gtk_dialog_set_response_sensitive(GTK_DIALOG(qoi->dialog), GTK_RESPONSE_OK, FALSE);
