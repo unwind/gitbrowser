@@ -615,6 +615,27 @@ static gboolean evt_open_quick_entry_key_press(GtkWidget *wid, GdkEventKey *evt,
 	return FALSE;
 }
 
+static gint cb_open_quick_sort_compare(GtkTreeModel *model, GtkTreeIter *a, GtkTreeIter *b, gpointer user)
+{
+	gchar	*dira, *dirb;
+	gint	ret;
+
+	gtk_tree_model_get(model, a, 1, &dira, -1);
+	gtk_tree_model_get(model, b, 1, &dirb, -1);
+	if(dira == NULL && dirb == NULL)
+		ret = 0;
+	else if(dira == NULL && dirb != NULL)
+		ret = 1;
+	else if(dira != NULL && dirb == NULL)
+		ret = -1;
+	else
+		ret = g_utf8_collate(dira, dirb);
+	g_free(dirb);
+	g_free(dira);
+
+	return ret;
+}
+
 void repository_open_quick(Repository *repo)
 {
 	QuickOpenInfo	*qoi;
@@ -643,6 +664,7 @@ void repository_open_quick(Repository *repo)
 		qoi->filter = gtk_tree_model_filter_new(GTK_TREE_MODEL(qoi->store), NULL);
 		gtk_tree_model_filter_set_visible_func(GTK_TREE_MODEL_FILTER(qoi->filter), cb_open_quick_filter, qoi, NULL);
 		qoi->sort = gtk_tree_model_sort_new_with_model(GTK_TREE_MODEL(qoi->filter));
+		gtk_tree_sortable_set_default_sort_func(GTK_TREE_SORTABLE(qoi->sort), cb_open_quick_sort_compare, qoi, NULL);
 		qoi->view = gtk_tree_view_new_with_model(GTK_TREE_MODEL(qoi->sort));
 		cr = gtk_cell_renderer_text_new();
 		vc = gtk_tree_view_column_new_with_attributes(_("Filename"), cr, "text", 0, NULL);
