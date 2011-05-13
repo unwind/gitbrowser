@@ -80,6 +80,7 @@ gboolean	tree_model_find_repository(GtkTreeModel *model, const gchar *root_path,
 void		tree_model_build_repository(GtkTreeModel *model, GtkTreeIter *root, const gchar *root_path);
 gboolean	tree_model_open_document(GtkTreeModel *model, GtkTreePath *path);
 gboolean	tree_model_get_document_path(GtkTreeModel *model, const GtkTreeIter *iter, gchar *buf, gsize buf_max);
+void		tree_model_foreach(GtkTreeModel *model, GtkTreeIter *root, void (*node_callback)(GtkTreeModel *model, GtkTreePath *path, GtkTreeIter *iter, gpointer user), gpointer user);
 
 /* -------------------------------------------------------------------------------------------------------------- */
 
@@ -423,13 +424,11 @@ Repository * repository_find_by_path(const gchar *path)
 	return NULL;
 }
 
-static gboolean cb_tree_to_list(GtkTreeModel *model, GtkTreePath *path, GtkTreeIter *iter, gpointer data)
+static void cb_tree_to_list(GtkTreeModel *model, GtkTreePath *path, GtkTreeIter *iter, gpointer user)
 {
-	GtkListStore	*list = data;
+	GtkListStore	*list = user;
 	gchar		buf[2048];
 
-	if(!gtk_tree_path_is_descendant(path, gitbrowser.click_path))
-		return FALSE;
 	/* Grab full path, in local filename encoding, if iter is a document (leaf) node. */
 	if(tree_model_get_document_path(model, iter, buf, sizeof buf))
 	{
@@ -447,7 +446,40 @@ static gboolean cb_tree_to_list(GtkTreeModel *model, GtkTreePath *path, GtkTreeI
 		g_free(dpath);
 		g_free(dname);
 	}
-	return FALSE;
+}
+
+/* Traverse only the children of the given repository, and call the node callback on each.
+ * We can't just use gtk_tree_model_foreach(), since we don't want to traverse the entire tree.
+*/
+static void repository_to_list(GtkTreeModel *model, const Repository *repo, void (*node_callback)(GtkTreeModel *model, GtkTreePath *path, GtkTreeIter *iter, gpointer user), gpointer user)
+{
+	GtkTreeIter	root, iter;
+	gboolean	found = FALSE;
+
+	if(!gtk_tree_model_get_iter_first(model, &root))
+		return;
+	if(!gtk_tree_model_iter_children(model, &iter, &root))
+		return;
+	/* Walk the toplevel nodes, which should be very very few, looking for the given repository.
+	 * This seems a bit clumsy, but it's a trade-off between i.e. maintaining an iter to the repo
+	 * at all times (which is annoying when repos are added/moved/deleted) and this. This won.
+	*/
+	do
+	{
+		gchar	*path;
+
+		gtk_tree_model_get(model, &iter, 1, &path, -1);
+		found = strcmp(path, repo->root_path) == 0;
+		g_free(path);
+	} while(!found && gtk_tree_model_iter_next(model, &iter));
+	if(!found)
+		return;
+	/* Now 'iter' is the root of the repository we want to linearize. */
+	root = iter;
+	if(!gtk_tree_model_iter_children(model, &iter, &root))
+		return;
+	/* Now 'iter' is finally pointing and the repository's first file. Add it, and all other. */
+	tree_model_foreach(model, &iter, node_callback, user);
 }
 
 static void evt_open_quick_selection_changed(GtkTreeSelection *sel, gpointer user)
@@ -549,6 +581,7 @@ void repository_open_quick(Repository *repo)
 
 		qoi->store = gtk_list_store_new(2, G_TYPE_STRING, G_TYPE_STRING);
 		qoi->dialog = gtk_dialog_new_with_buttons(_("Git Repository Quick Open"), NULL, GTK_DIALOG_MODAL, GTK_STOCK_OK, GTK_RESPONSE_OK, GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL, NULL);
+		gtk_window_set_default_size(GTK_WINDOW(qoi->dialog), 600, 600);
 		vbox = ui_dialog_vbox_new(GTK_DIALOG(qoi->dialog));
 		label = gtk_label_new(_("Select one or more document(s) to open. Type to filter filenames."));
 		gtk_box_pack_start(GTK_BOX(vbox), label, FALSE, FALSE, 0);
@@ -580,7 +613,7 @@ void repository_open_quick(Repository *repo)
 		gtk_tree_selection_set_mode(qoi->selection, GTK_SELECTION_MULTIPLE);
 		g_signal_connect(G_OBJECT(qoi->selection), "changed", G_CALLBACK(evt_open_quick_selection_changed), qoi);
 
-		gtk_tree_model_foreach(GTK_TREE_MODEL(gitbrowser.model), cb_tree_to_list, qoi->store);
+		repository_to_list(gitbrowser.model, repo, cb_tree_to_list, qoi->store);
 
 		gtk_widget_grab_focus(entry);
 	}
@@ -857,6 +890,27 @@ gboolean tree_model_get_document_path(GtkTreeModel *model, const GtkTreeIter *it
 		return ok;
 	}
 	return FALSE;
+}
+
+void tree_model_foreach(GtkTreeModel *model, GtkTreeIter *root, void (*node_callback)(GtkTreeModel *model, GtkTreePath *path, GtkTreeIter *iter, gpointer user), gpointer user)
+{
+	do
+	{
+		GtkTreeIter	child;
+
+		if(gtk_tree_model_iter_children(model, &child, root))
+		{
+			tree_model_foreach(model, &child, node_callback, user);
+		}
+		else
+		{
+			GtkTreePath	*here;
+
+			here = gtk_tree_model_get_path(model, root);
+			node_callback(model, here, root, user);
+			gtk_tree_path_free(here);
+		}
+	} while(gtk_tree_model_iter_next(model, root));
 }
 
 static gboolean evt_menu_selection_done(GtkWidget *wid, gpointer user)
