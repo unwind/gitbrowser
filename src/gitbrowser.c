@@ -35,6 +35,11 @@ enum
 	NUM_COMMANDS
 };
 
+enum {
+	KEY_REPOSITORY_OPEN_QUICK_FROM_DOCUMENT,
+	NUM_KEYS
+};
+
 typedef struct
 {
 	GtkWidget		*dialog;
@@ -1010,15 +1015,14 @@ GtkWidget * tree_view_new(GtkTreeModel *model)
 
 /* -------------------------------------------------------------------------------------------------------------- */
 
-static gboolean evt_key_group_callback(guint key_id)
+static void cb_key_group_callback(guint key_id)
 {
 	switch(key_id)
 	{
-	case 0:
+	case KEY_REPOSITORY_OPEN_QUICK_FROM_DOCUMENT:
 		gtk_action_activate(gitbrowser.actions[CMD_REPOSITORY_OPEN_QUICK_FROM_DOCUMENT]);
-		return TRUE;
+		break;
 	}
-	return FALSE;
 }
 
 void plugin_init(GeanyData *geany_data)
@@ -1031,8 +1035,8 @@ void plugin_init(GeanyData *geany_data)
 	gitbrowser.view = tree_view_new(gitbrowser.model);
 	gitbrowser.repositories = g_hash_table_new(g_str_hash, g_str_equal);
 
-	gitbrowser.key_group = plugin_set_key_group(geany_plugin, "gitbrowser", 1, evt_key_group_callback);
-	keybindings_set_item(gitbrowser.key_group, 0, NULL, GDK_KEY_O, GDK_SHIFT_MASK | GDK_MOD1_MASK, "repository-open-quick-from-document", _("Quick Open from Document"), gitbrowser.action_menu_items[CMD_REPOSITORY_OPEN_QUICK_FROM_DOCUMENT]);
+	gitbrowser.key_group = plugin_set_key_group(geany_plugin, "gitbrowser", NUM_KEYS, NULL);
+	keybindings_set_item(gitbrowser.key_group, KEY_REPOSITORY_OPEN_QUICK_FROM_DOCUMENT, cb_key_group_callback, GDK_KEY_O, GDK_SHIFT_MASK | GDK_CONTROL_MASK, "repository-open-quick-from-document", _("Quick Open from Document"), gitbrowser.action_menu_items[CMD_REPOSITORY_OPEN_QUICK_FROM_DOCUMENT]);
 
 	scwin = gtk_scrolled_window_new(NULL, NULL);
 	gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scwin), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
