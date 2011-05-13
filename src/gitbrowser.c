@@ -708,26 +708,32 @@ void repository_open_quick(Repository *repo)
 
 			if((unsorted = gtk_tree_model_sort_convert_path_to_child_path(GTK_TREE_MODEL_SORT(qoi->sort), iter->data)) != NULL)
 			{
-				GtkTreeIter	here;
+				GtkTreePath	*unfiltered;
 
-				if(gtk_tree_model_get_iter(GTK_TREE_MODEL(qoi->store), &here, unsorted))
+				if((unfiltered = gtk_tree_model_filter_convert_path_to_child_path(GTK_TREE_MODEL_FILTER(qoi->filter), unsorted)) != NULL)
 				{
-					gchar	buf[2048], *dpath, *dname, *fn;
-					gint	len;
+					GtkTreeIter	here;
 
-					gtk_tree_model_get(GTK_TREE_MODEL(qoi->store), &here, 0, &dname, 1, &dpath, -1);
-					if((len = g_snprintf(buf, sizeof buf, "%s%s%s", dpath, G_DIR_SEPARATOR_S, dname)) < sizeof buf)
+					if(gtk_tree_model_get_iter(GTK_TREE_MODEL(qoi->store), &here, unfiltered))
 					{
-						if((fn = g_filename_from_utf8(buf, (gssize) len, NULL, NULL, NULL)) != NULL)
+						gchar	buf[2048], *dpath, *dname, *fn;
+						gint	len;
+
+						gtk_tree_model_get(GTK_TREE_MODEL(qoi->store), &here, 0, &dname, 1, &dpath, -1);
+						if((len = g_snprintf(buf, sizeof buf, "%s%s%s", dpath, G_DIR_SEPARATOR_S, dname)) < sizeof buf)
 						{
-							document_open_file(buf, FALSE, NULL, NULL);
-							g_free(fn);
+							if((fn = g_filename_from_utf8(buf, (gssize) len, NULL, NULL, NULL)) != NULL)
+							{
+								document_open_file(buf, FALSE, NULL, NULL);
+								g_free(fn);
+							}
 						}
+						g_free(dname);
+						g_free(dpath);
 					}
-					g_free(dname);
-					g_free(dpath);
+					gtk_tree_path_free(unsorted);
 				}
-				gtk_tree_path_free(unsorted);
+				gtk_tree_path_free(unfiltered);
 			}
 		}
 		g_list_foreach(selection, (GFunc) gtk_tree_path_free, NULL);
