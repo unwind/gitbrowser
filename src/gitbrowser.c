@@ -507,43 +507,29 @@ static gboolean cb_open_quick_filter(GtkTreeModel *model, GtkTreeIter *iter, gpo
 	return ret;
 }
 
-static void open_quick_move_cursor(QuickOpenInfo *qoi, gint delta)
-{
-	GtkTreePath	*path = NULL;
-
-	gtk_tree_view_get_cursor(GTK_TREE_VIEW(qoi->view), &path, NULL);
-	if(path != NULL)
-	{
-		gboolean	set = TRUE;
-
-		if(delta == -1)
-			set = gtk_tree_path_prev(path);
-		else if(delta == 1)
-			gtk_tree_path_next(path);
-		if(set)
-			gtk_tree_view_set_cursor_on_cell(GTK_TREE_VIEW(qoi->view), path, NULL, NULL, FALSE);
-		gtk_tree_path_free(path);
-	}
-}
-
 static gboolean evt_open_quick_entry_key_press(GtkWidget *wid, GdkEventKey *evt, gpointer user)
 {
 	QuickOpenInfo	*qoi = user;
 
 	if(evt->type == GDK_KEY_PRESS)
 	{
-		if(evt->keyval == GDK_KEY_Up)
+		/* This is, unfortunately, something of a hack: to make cursor up/down keys
+		 * in the entry affect the selection in the tree view, we copy the event,
+		 * poke the window member, and re-emit it. The best thing is that it works.
+		*/
+		if(evt->keyval == GDK_KEY_Up || evt->keyval == GDK_KEY_Down ||
+		   evt->keyval == GDK_KEY_Page_Up || evt->keyval == GDK_KEY_Page_Down)
 		{
-			open_quick_move_cursor(qoi, -1);
+			GdkEventKey	copy = *evt;
+
+			copy.window = gtk_widget_get_window(qoi->view);
+			copy.send_event = TRUE;
+			gtk_widget_grab_focus(qoi->view);
+			gtk_main_do_event((GdkEvent *) &copy);
+			gtk_widget_grab_focus(wid);
+
 			return TRUE;
 		}
-		else if(evt->keyval == GDK_KEY_Down)
-		{
-			open_quick_move_cursor(qoi, 1);
-			return TRUE;
-		}
-		else if(ui_is_keyval_enter_or_return(evt->keyval))
-			gtk_dialog_response(GTK_DIALOG(qoi->dialog), GTK_RESPONSE_OK);
 	}
 	return FALSE;
 }
@@ -581,6 +567,7 @@ void repository_open_quick(Repository *repo)
 
 		qoi->store = gtk_list_store_new(2, G_TYPE_STRING, G_TYPE_STRING);
 		qoi->dialog = gtk_dialog_new_with_buttons(_("Git Repository Quick Open"), NULL, GTK_DIALOG_MODAL, GTK_STOCK_OK, GTK_RESPONSE_OK, GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL, NULL);
+		gtk_dialog_set_default_response(GTK_DIALOG(qoi->dialog), GTK_RESPONSE_OK);
 		gtk_window_set_default_size(GTK_WINDOW(qoi->dialog), 600, 600);
 		vbox = ui_dialog_vbox_new(GTK_DIALOG(qoi->dialog));
 		label = gtk_label_new(_("Select one or more document(s) to open. Type to filter filenames."));
@@ -601,6 +588,7 @@ void repository_open_quick(Repository *repo)
 		gtk_container_add(GTK_CONTAINER(scwin), qoi->view);
 		gtk_box_pack_start(GTK_BOX(vbox), scwin, TRUE, TRUE, 0);
 		entry = gtk_entry_new();
+		gtk_entry_set_activates_default(GTK_ENTRY(entry), TRUE);
 		g_signal_connect(G_OBJECT(entry), "key-press-event", G_CALLBACK(evt_open_quick_entry_key_press), qoi);
 		g_signal_connect(G_OBJECT(entry), "changed", G_CALLBACK(evt_open_quick_entry_changed), qoi);
 		gtk_box_pack_start(GTK_BOX(vbox), entry, FALSE, FALSE, 0);
@@ -620,7 +608,7 @@ void repository_open_quick(Repository *repo)
 	response = gtk_dialog_run(GTK_DIALOG(qoi->dialog));
 	if(response == GTK_RESPONSE_OK)
 	{
-		GList		*selection = gtk_tree_selection_get_selected_rows(qoi->selection, NULL), *iter;
+		GList	*selection = gtk_tree_selection_get_selected_rows(qoi->selection, NULL), *iter;
 
 		for(iter = selection; iter != NULL; iter = g_list_next(iter))
 		{
