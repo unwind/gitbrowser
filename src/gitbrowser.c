@@ -5,6 +5,9 @@
 
 #include "geanyplugin.h"
 
+#define	MNEMONIC_NAME		"gitbrowser"
+#define	PATH_SEPARATOR_CHAR	':'
+
 GeanyPlugin         *geany_plugin;
 GeanyData           *geany_data;
 GeanyFunctions      *geany_functions;
@@ -68,6 +71,7 @@ static struct
 	GHashTable	*repositories;		/* Hashed on root path. */
 
 	GeanyKeyGroup	*key_group;
+	gchar		*config_filename;
 } gitbrowser;
 
 /* -------------------------------------------------------------------------------------------------------------- */
@@ -456,9 +460,7 @@ static void repository_to_list(GtkTreeModel *model, const Repository *repo, void
 	GtkTreeIter	root, iter;
 	gboolean	found = FALSE;
 
-	if(!gtk_tree_model_get_iter_first(model, &root))
-		return;
-	if(!gtk_tree_model_iter_children(model, &iter, &root))
+	if(!gtk_tree_model_get_iter_first(model, &root) || !gtk_tree_model_iter_children(model, &iter, &root))
 		return;
 	/* Walk the toplevel nodes, which should be very very few, looking for the given repository.
 	 * This seems a bit clumsy, but it's a trade-off between i.e. maintaining an iter to the repo
@@ -480,6 +482,69 @@ static void repository_to_list(GtkTreeModel *model, const Repository *repo, void
 		return;
 	/* Now 'iter' is finally pointing and the repository's first file. Add it, and all other. */
 	tree_model_foreach(model, &iter, node_callback, user);
+}
+
+void repository_save_all(GtkTreeModel *model)
+{
+	GtkTreeIter	root, iter;
+	GString		*repos;
+	GKeyFile	*out;
+	gchar		*data;
+
+	if(!gtk_tree_model_get_iter_first(model, &root) || !gtk_tree_model_iter_children(model, &iter, &root))
+		return;
+	repos = g_string_new("");
+	do
+	{
+		gchar	*dpath, *fn;
+
+		gtk_tree_model_get(model, &iter, 1, &dpath, -1);
+		if((fn = g_filename_from_utf8(dpath, -1, NULL, NULL, NULL)) != NULL)
+		{
+			if(repos->len > 0)
+				g_string_append_c(repos, PATH_SEPARATOR_CHAR);
+			g_string_append(repos, fn);
+			g_free(fn);
+		}
+	} while(gtk_tree_model_iter_next(model, &iter));
+
+	out = g_key_file_new();
+
+	g_key_file_set_string(out, MNEMONIC_NAME, "repositories", repos->str);
+	g_string_free(repos, TRUE);
+	if((data = g_key_file_to_data(out, NULL, NULL)) != NULL)
+	{
+		utils_write_file(gitbrowser.config_filename, data);
+		g_free(data);
+	}
+	g_key_file_free(out);
+}
+
+void repository_load_all(void)
+{
+	GKeyFile	*in;
+
+	in = g_key_file_new();
+	if(g_key_file_load_from_file(in, gitbrowser.config_filename, G_KEY_FILE_NONE, NULL))
+	{
+		gchar	*repos = g_key_file_get_string(in, MNEMONIC_NAME, "repositories", NULL);
+
+		if(repos != NULL)
+		{
+			gchar	separator[] = { PATH_SEPARATOR_CHAR, '\0' };
+			gchar	**repo_vector = g_strsplit(repos, separator, 0);
+			gsize	i;
+
+			for(i = 0; repo_vector[i] != NULL; i++)
+			{
+				Repository	*repo = repository_new(repo_vector[i]);
+				tree_model_build_repository(gitbrowser.model, NULL, repo->root_path);
+			}
+			
+			g_free(repos);
+		}
+	}
+	g_key_file_free(in);
 }
 
 static void evt_open_quick_selection_changed(GtkTreeSelection *sel, gpointer user)
@@ -1077,6 +1142,7 @@ static void cb_key_group_callback(guint key_id)
 void plugin_init(GeanyData *geany_data)
 {
 	GtkWidget	*scwin;
+	gchar		*dir;
 
 	init_commands(gitbrowser.actions, gitbrowser.action_menu_items);
 
@@ -1084,8 +1150,15 @@ void plugin_init(GeanyData *geany_data)
 	gitbrowser.view = tree_view_new(gitbrowser.model);
 	gitbrowser.repositories = g_hash_table_new(g_str_hash, g_str_equal);
 
-	gitbrowser.key_group = plugin_set_key_group(geany_plugin, "gitbrowser", NUM_KEYS, NULL);
+	gitbrowser.key_group = plugin_set_key_group(geany_plugin, MNEMONIC_NAME, NUM_KEYS, NULL);
 	keybindings_set_item(gitbrowser.key_group, KEY_REPOSITORY_OPEN_QUICK_FROM_DOCUMENT, cb_key_group_callback, GDK_KEY_O, GDK_SHIFT_MASK | GDK_CONTROL_MASK, "repository-open-quick-from-document", _("Quick Open from Document"), gitbrowser.action_menu_items[CMD_REPOSITORY_OPEN_QUICK_FROM_DOCUMENT]);
+
+	dir = g_strconcat(geany->app->configdir, G_DIR_SEPARATOR_S, "plugins", G_DIR_SEPARATOR_S, MNEMONIC_NAME, NULL);
+	utils_mkdir(dir, TRUE);
+	gitbrowser.config_filename = g_strconcat(dir, G_DIR_SEPARATOR_S, MNEMONIC_NAME ".conf", NULL);
+	g_free(dir);
+
+	repository_load_all();
 
 	scwin = gtk_scrolled_window_new(NULL, NULL);
 	gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scwin), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
@@ -1096,4 +1169,7 @@ void plugin_init(GeanyData *geany_data)
 
 void plugin_cleanup(void)
 {
+	repository_save_all(gitbrowser.model);
+	g_free(gitbrowser.config_filename);
+	g_hash_table_destroy(gitbrowser.repositories);
 }
