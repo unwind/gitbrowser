@@ -639,7 +639,6 @@ static gint cb_open_quick_sort_compare(GtkTreeModel *model, GtkTreeIter *a, GtkT
 void repository_open_quick(Repository *repo)
 {
 	QuickOpenInfo	*qoi;
-        gint		response;
 
 	if(!repo)
 	{
@@ -697,8 +696,7 @@ void repository_open_quick(Repository *repo)
 
 		gtk_widget_grab_focus(entry);
 	}
-	response = gtk_dialog_run(GTK_DIALOG(qoi->dialog));
-	if(response == GTK_RESPONSE_OK)
+	if(gtk_dialog_run(GTK_DIALOG(qoi->dialog) == GTK_RESPONSE_OK)
 	{
 		GList	*selection = gtk_tree_selection_get_selected_rows(qoi->selection, NULL), *iter;
 
