@@ -48,7 +48,8 @@ typedef struct
 	GtkWidget		*dialog;
 	GtkWidget		*view;
 	GtkTreeSelection	*selection;
-	GtkListStore		*store;
+	GtkListStore		*store;			/* Only pointers in here. */
+	GString			*names;			/* All the names! */
 	GtkTreeModel		*filter;
 	GtkTreeModel		*sort;
 	gchar			filter_text[128];	/* Cached so we don't need to query GtkEntry on each filter callback. */
@@ -401,6 +402,7 @@ Repository * repository_new(const gchar *root_path)
 	r->quick_open.selection = NULL;
 	r->quick_open.sort = NULL;
 	r->quick_open.store = NULL;
+	r->quick_open.names = NULL;
 	r->quick_open.view = NULL;
 	r->quick_open.filter_text[0] = '\0';
 
@@ -426,7 +428,17 @@ Repository * repository_find_by_path(const gchar *path)
 	return NULL;
 }
 
-static void recurse_repository_to_list(GtkTreeModel *model, GtkTreeIter *iter, gchar *path, gsize path_length, GtkListStore *list)
+static gsize string_store(GString *string, const gchar *text)
+{
+	gsize	pos = string->len + 1;
+
+	g_string_append_c(string, '\0');	/* Terminate previous name. */
+	g_string_append(string, text);
+
+	return pos;
+}
+
+static void recurse_repository_to_list(GtkTreeModel *model, GtkTreeIter *iter, gchar *path, gsize path_length, QuickOpenInfo *qoi)
 {
 	gchar		*dname, *fname, *get, *put;
 	const gsize	old_length = path_length;
@@ -450,17 +462,20 @@ static void recurse_repository_to_list(GtkTreeModel *model, GtkTreeIter *iter, g
 
 			do
 			{
-				recurse_repository_to_list(model, &child, path, path_length, list);
+				recurse_repository_to_list(model, &child, path, path_length, qoi);
 			} while(gtk_tree_model_iter_next(model, &child));
 		}
 		else
 		{
 			GtkTreeIter	liter;
 			gchar		*dpath;
+			gpointer	off_name, off_path;
 
 			dpath = g_filename_display_name(path);
-			gtk_list_store_append(list, &liter);
-			gtk_list_store_set(list, &liter, 0, dname, 1, dpath, -1);
+			/* Append name and path to the big string buffer, putting "naked" offsets in the pointers. */
+			off_name = GSIZE_TO_POINTER(string_store(qoi->names, dname));
+			off_path = GSIZE_TO_POINTER(string_store(qoi->names, dpath));
+			gtk_list_store_insert_with_values(qoi->store, &liter, INT_MAX, 0, off_name, 1, off_path, -1);
 			g_free(dpath);
 		}
 		/* Undo our modifications to the global path. */
@@ -469,7 +484,7 @@ static void recurse_repository_to_list(GtkTreeModel *model, GtkTreeIter *iter, g
 	} while(gtk_tree_model_iter_next(model, iter));
 }
 
-static void repository_to_list(const Repository *repo, GtkTreeModel *model, GtkListStore *list)
+static void repository_to_list(const Repository *repo, GtkTreeModel *model, QuickOpenInfo *qoi)
 {
 	GtkTreeIter	root, iter;
 	gboolean	found = FALSE;
@@ -501,8 +516,23 @@ static void repository_to_list(const Repository *repo, GtkTreeModel *model, GtkL
 	if(len < sizeof buf)
 	{
 		GTimer	*tmr = g_timer_new();
-		recurse_repository_to_list(model, &iter, buf, len, list);
+		recurse_repository_to_list(model, &iter, buf, len, qoi);
+		printf("%u bytes of names stored, fixing\n", (unsigned int) qoi->names->len);
+		/* Now we need to fixup. */
+		if(gtk_tree_model_get_iter_first(GTK_TREE_MODEL(qoi->store), &iter))
+		{
+			do
+			{
+				gpointer	name, path;
+
+				gtk_tree_model_get(GTK_TREE_MODEL(qoi->store), &iter, 0, &name, 1, &path, -1);
+				name = qoi->names->str + GPOINTER_TO_SIZE(name);
+				path = qoi->names->str + GPOINTER_TO_SIZE(path);
+				gtk_list_store_set(qoi->store, &iter, 0, name, 1, path, -1);
+			} while(gtk_tree_model_iter_next(GTK_TREE_MODEL(qoi->store), &iter));
+		}
 		msgwin_status_add("List populated in %.1f ms", 1e3 * g_timer_elapsed(tmr, NULL));
+		printf("List populated in %.1f ms", 1e3 * g_timer_elapsed(tmr, NULL));
 		g_timer_destroy(tmr);
 	}
 }
@@ -587,7 +617,6 @@ static gboolean cb_open_quick_filter(GtkTreeModel *model, GtkTreeIter *iter, gpo
 	if(name != NULL)
 	{
 		ret = strstr(name, qoi->filter_text) != NULL;
-		g_free(name);
 	}
 	else
 		ret = TRUE;
@@ -655,8 +684,6 @@ static gint cb_open_quick_sort_compare(GtkTreeModel *model, GtkTreeIter *a, GtkT
 		ret = -1;
 	else
 		ret = g_utf8_collate(dira, dirb);
-	g_free(dirb);
-	g_free(dira);
 
 	return ret;
 }
@@ -678,7 +705,10 @@ void repository_open_quick(Repository *repo)
 		GtkCellRenderer         *cr;
 		GtkTreeViewColumn       *vc;
 
-		qoi->store = gtk_list_store_new(2, G_TYPE_STRING, G_TYPE_STRING);
+		qoi->store = gtk_list_store_new(2, G_TYPE_POINTER, G_TYPE_POINTER);
+		qoi->names = g_string_sized_new(32 << 10);
+		repository_to_list(repo, gitbrowser.model, qoi);
+
 		qoi->dialog = gtk_dialog_new_with_buttons(_("Git Repository Quick Open"), NULL, GTK_DIALOG_MODAL, GTK_STOCK_OK, GTK_RESPONSE_OK, GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL, NULL);
 		gtk_dialog_set_default_response(GTK_DIALOG(qoi->dialog), GTK_RESPONSE_OK);
 		gtk_window_set_default_size(GTK_WINDOW(qoi->dialog), 600, 600);
@@ -716,8 +746,6 @@ void repository_open_quick(Repository *repo)
 		qoi->selection = gtk_tree_view_get_selection(GTK_TREE_VIEW(qoi->view));
 		gtk_tree_selection_set_mode(qoi->selection, GTK_SELECTION_MULTIPLE);
 		g_signal_connect(G_OBJECT(qoi->selection), "changed", G_CALLBACK(evt_open_quick_selection_changed), qoi);
-
-		repository_to_list(repo, gitbrowser.model, qoi->store);
 
 		gtk_widget_grab_focus(entry);
 	}
