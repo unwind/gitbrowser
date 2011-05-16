@@ -426,37 +426,55 @@ Repository * repository_find_by_path(const gchar *path)
 	return NULL;
 }
 
-static void cb_tree_to_list(GtkTreeModel *model, GtkTreePath *path, GtkTreeIter *iter, gpointer user)
+static void recurse_repository_to_list(GtkTreeModel *model, GtkTreeIter *iter, gchar *path, gsize path_length, GtkListStore *list)
 {
-	GtkListStore	*list = user;
-	gchar		buf[2048];
-
-	/* Grab full path, in local filename encoding, if iter is a document (leaf) node. */
-	if(tree_model_get_document_path(model, iter, buf, sizeof buf))
+	gchar		*dname, *fname, *get, *put;
+	const gsize	old_length = path_length;
+	GtkTreeIter	child;
+	
+	/* Loop over all nodes at this level. */
+	do
 	{
-		gchar		*filename, *dname, *dpath;
-		GtkTreeIter	list_iter;
+		gtk_tree_model_get(model, iter, 0, &dname, 1, &fname, -1);
+		/* Append the local filename to the path. Ignore buffer overflow, for now. */
+		for(get = fname, put = path + path_length; *get != '\0'; get++, put++, path_length++)
+			*put = *get;
+		*put = '\0';
 
-		if((filename = strrchr(buf, G_DIR_SEPARATOR)) != NULL)
-			*filename++ = '\0';
+		/* Do we need to recurse, here? */
+		if(gtk_tree_model_iter_children(model, &child, iter))
+		{
+			/* Yes: time to iterate children, so append a separator. */
+			strcpy(put, G_DIR_SEPARATOR_S);
+			path_length += strlen(G_DIR_SEPARATOR_S);
+
+			do
+			{
+				recurse_repository_to_list(model, &child, path, path_length, list);
+			} while(gtk_tree_model_iter_next(model, &child));
+		}
 		else
-			filename = buf;
-		gtk_list_store_append(list, &list_iter);
-		dname = g_filename_display_name(filename);
-		dpath = g_filename_display_name(buf);
-		gtk_list_store_set(list, &list_iter, 0, dname, 1, dpath, -1);
-		g_free(dpath);
-		g_free(dname);
-	}
+		{
+			GtkTreeIter	liter;
+			gchar		*dpath;
+
+			dpath = g_filename_display_name(path);
+			gtk_list_store_append(list, &liter);
+			gtk_list_store_set(list, &liter, 0, dname, 1, dpath, -1);
+			g_free(dpath);
+		}
+		/* Undo our modifications to the global path. */
+		path[old_length] = '\0';
+		path_length = old_length;
+	} while(gtk_tree_model_iter_next(model, iter));
 }
 
-/* Traverse only the children of the given repository, and call the node callback on each.
- * We can't just use gtk_tree_model_foreach(), since we don't want to traverse the entire tree.
-*/
-static void repository_to_list(GtkTreeModel *model, const Repository *repo, void (*node_callback)(GtkTreeModel *model, GtkTreePath *path, GtkTreeIter *iter, gpointer user), gpointer user)
+static void repository_to_list(const Repository *repo, GtkTreeModel *model, GtkListStore *list)
 {
 	GtkTreeIter	root, iter;
 	gboolean	found = FALSE;
+	gchar		buf[2048];
+	gsize		len;
 
 	if(!gtk_tree_model_get_iter_first(model, &root) || !gtk_tree_model_iter_children(model, &iter, &root))
 		return;
@@ -478,8 +496,15 @@ static void repository_to_list(GtkTreeModel *model, const Repository *repo, void
 	root = iter;
 	if(!gtk_tree_model_iter_children(model, &iter, &root))
 		return;
-	/* Now 'iter' is finally pointing and the repository's first file. Add it, and all other. */
-	tree_model_foreach(model, &iter, node_callback, user);
+	/* Now 'iter' is finally pointing and the repository's first file. */
+	len = g_snprintf(buf, sizeof buf, "%s%s", repo->root_path, G_DIR_SEPARATOR_S);
+	if(len < sizeof buf)
+	{
+		GTimer	*tmr = g_timer_new();
+		recurse_repository_to_list(model, &iter, buf, len, list);
+		msgwin_status_add("List populated in %.1f ms", 1e3 * g_timer_elapsed(tmr, NULL));
+		g_timer_destroy(tmr);
+	}
 }
 
 void repository_save_all(GtkTreeModel *model)
@@ -692,11 +717,11 @@ void repository_open_quick(Repository *repo)
 		gtk_tree_selection_set_mode(qoi->selection, GTK_SELECTION_MULTIPLE);
 		g_signal_connect(G_OBJECT(qoi->selection), "changed", G_CALLBACK(evt_open_quick_selection_changed), qoi);
 
-		repository_to_list(gitbrowser.model, repo, cb_tree_to_list, qoi->store);
+		repository_to_list(repo, gitbrowser.model, qoi->store);
 
 		gtk_widget_grab_focus(entry);
 	}
-	if(gtk_dialog_run(GTK_DIALOG(qoi->dialog) == GTK_RESPONSE_OK)
+	if(gtk_dialog_run(GTK_DIALOG(qoi->dialog)) == GTK_RESPONSE_OK)
 	{
 		GList	*selection = gtk_tree_selection_get_selected_rows(qoi->selection, NULL), *iter;
 
@@ -897,7 +922,7 @@ static guint tree_model_build_traverse(GtkTreeModel *model, GNode *root, GtkTree
 		/* We now know this is an inner node; add tree node and recurse. */
 		gtk_tree_store_append(GTK_TREE_STORE(model), &iter, parent);
 		dname = g_filename_display_name(child->data);
-		gtk_tree_store_set(GTK_TREE_STORE(model), &iter, 0, dname, 1, child->data,-1);
+		gtk_tree_store_set(GTK_TREE_STORE(model), &iter, 0, dname, 1, child->data, -1);
 		g_free(dname);
 		count += tree_model_build_traverse(model, child, &iter);	/* Don't count inner node itself. */
 	}
