@@ -613,11 +613,15 @@ static void evt_open_quick_selection_changed(GtkTreeSelection *sel, gpointer use
 static gboolean cb_open_quick_filter(GtkTreeModel *model, GtkTreeIter *iter, gpointer user)
 {
 	const QuickOpenInfo	*qoi = user;
-	gchar			*name;
 
-	gtk_tree_model_get(model, iter, 0, &name, -1);
-	if(name != NULL)
-		return strstr(name, qoi->filter_text) != NULL;
+	if(qoi->filter_text[0] != '\0')
+	{
+		gchar	*name;
+
+		gtk_tree_model_get(model, iter, 0, &name, -1);
+		if(name != NULL)
+			return strstr(name, qoi->filter_text) != NULL;
+	}
 	return TRUE;
 }
 
@@ -643,6 +647,8 @@ static void evt_open_quick_entry_changed(GtkWidget *wid, gpointer user)
 	first = gtk_tree_path_new_first();
 	gtk_tree_view_set_cursor(GTK_TREE_VIEW(qoi->view), first, NULL, FALSE);
 	gtk_tree_path_free(first);
+
+	gtk_entry_set_icon_sensitive(GTK_ENTRY(wid), GTK_ENTRY_ICON_SECONDARY, qoi->filter_text[0] != '\0');
 }
 
 static void evt_open_quick_entry_icon_release(GtkWidget *wid, GtkEntryIconPosition position, GdkEvent *evt, gpointer user)
@@ -768,6 +774,7 @@ void repository_open_quick(Repository *repo)
 		entry = gtk_entry_new();
 		gtk_entry_set_activates_default(GTK_ENTRY(entry), TRUE);
 		gtk_entry_set_icon_from_stock(GTK_ENTRY(entry), GTK_ENTRY_ICON_SECONDARY, GTK_STOCK_CLEAR);
+		gtk_entry_set_icon_sensitive(GTK_ENTRY(entry), GTK_ENTRY_ICON_SECONDARY, FALSE);
 		g_signal_connect(G_OBJECT(entry), "changed", G_CALLBACK(evt_open_quick_entry_changed), qoi);
 		g_signal_connect(G_OBJECT(entry), "key-press-event", G_CALLBACK(evt_open_quick_entry_key_press), qoi);
 		g_signal_connect(G_OBJECT(entry), "icon-release", G_CALLBACK(evt_open_quick_entry_icon_release), qoi);
