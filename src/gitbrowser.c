@@ -189,7 +189,7 @@ static void cmd_repository_remove_all(GtkAction *action, gpointer user)
 {
 	GtkTreeIter	iter, child;
 
-	CMD_INIT("repository-remove-all", _("Remove All"), _("Removes all known repositories from the plugin's browser tree."), GTK_STOCK_DELETE);
+	CMD_INIT("repository-remove-all", _("Remove All"), _("Removes all known repositories from the plugin's browser tree."), GTK_STOCK_CLEAR);
 
 	if(gtk_tree_model_get_iter_first(gitbrowser.model, &iter))
 	{
