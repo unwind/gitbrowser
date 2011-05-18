@@ -627,6 +627,13 @@ static gboolean cb_open_quick_filter(GtkTreeModel *model, GtkTreeIter *iter, gpo
 	return ret;
 }
 
+static void evt_open_quick_view_row_activated(GtkWidget *view, GtkTreePath *path, GtkTreeViewColumn *column, gpointer user)
+{
+	QuickOpenInfo	*qoi = user;
+
+	gtk_dialog_response(GTK_DIALOG(qoi->dialog), GTK_RESPONSE_OK);
+}
+
 static void evt_open_quick_entry_changed(GtkWidget *wid, gpointer user)
 {
 	QuickOpenInfo	*qoi = user;
@@ -762,6 +769,7 @@ void repository_open_quick(Repository *repo)
 
 		scwin = gtk_scrolled_window_new(NULL, NULL);
 		gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scwin), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
+		g_signal_connect(G_OBJECT(qoi->view), "row_activated", G_CALLBACK(evt_open_quick_view_row_activated), qoi);
 		gtk_container_add(GTK_CONTAINER(scwin), qoi->view);
 		gtk_box_pack_start(GTK_BOX(vbox), scwin, TRUE, TRUE, 0);
 		entry = gtk_entry_new();
