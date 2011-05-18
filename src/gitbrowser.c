@@ -468,12 +468,15 @@ static void recurse_repository_to_list(GtkTreeModel *model, GtkTreeIter *iter, g
 		else
 		{
 			GtkTreeIter	liter;
-			gchar		*dpath;
+			gchar		*dpath, *slash;
 			gpointer	off_name, off_path;
 
-			dpath = g_filename_display_name(path);
 			/* Append name and path to the big string buffer, putting "naked" offsets in the pointers. */
 			off_name = GSIZE_TO_POINTER(string_store(qoi->names, dname));
+			dpath = g_filename_display_name(path);
+			/* Remove the last component, which is dname itself, and we don't want it in the Location column. */
+			if((slash = g_utf8_strrchr(dpath, -1, G_DIR_SEPARATOR)) != NULL)
+				*slash = '\0';
 			off_path = GSIZE_TO_POINTER(string_store(qoi->names, dpath));
 			gtk_list_store_insert_with_values(qoi->store, &liter, INT_MAX, 0, off_name, 1, off_path, -1);
 			g_free(dpath);
@@ -809,8 +812,6 @@ void repository_open_quick(Repository *repo)
 								g_free(fn);
 							}
 						}
-						g_free(dname);
-						g_free(dpath);
 					}
 					gtk_tree_path_free(unsorted);
 				}
