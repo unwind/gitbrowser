@@ -532,7 +532,7 @@ static void repository_to_list(const Repository *repo, GtkTreeModel *model, Quic
 			} while(gtk_tree_model_iter_next(GTK_TREE_MODEL(qoi->store), &iter));
 		}
 		msgwin_status_add("List populated in %.1f ms", 1e3 * g_timer_elapsed(tmr, NULL));
-		printf("List populated in %.1f ms", 1e3 * g_timer_elapsed(tmr, NULL));
+		printf("List populated in %.1f ms\n", 1e3 * g_timer_elapsed(tmr, NULL));
 		g_timer_destroy(tmr);
 	}
 }
@@ -688,6 +688,22 @@ static gint cb_open_quick_sort_compare(GtkTreeModel *model, GtkTreeIter *a, GtkT
 	return ret;
 }
 
+static void cdf_open_quick_filename(GtkTreeViewColumn *tree_column, GtkCellRenderer *cell, GtkTreeModel *model, GtkTreeIter *iter, gpointer user)
+{
+	gchar	*filename;
+
+	gtk_tree_model_get(model, iter, 0, &filename, -1);
+	g_object_set(G_OBJECT(cell), "text", filename, NULL);
+}
+
+static void cdf_open_quick_location(GtkTreeViewColumn *tree_column, GtkCellRenderer *cell, GtkTreeModel *model, GtkTreeIter *iter, gpointer user)
+{
+	gchar	*location;
+
+	gtk_tree_model_get(model, iter, 1, &location, -1);
+	g_object_set(G_OBJECT(cell), "text", location, NULL);
+}
+
 void repository_open_quick(Repository *repo)
 {
 	QuickOpenInfo	*qoi;
@@ -701,7 +717,7 @@ void repository_open_quick(Repository *repo)
 
 	if(qoi->dialog == NULL)
 	{
-		GtkWidget		*vbox, *label, *scwin, *entry;
+		GtkWidget		*vbox, *label, *scwin, *entry, *title;
 		GtkCellRenderer         *cr;
 		GtkTreeViewColumn       *vc;
 
@@ -720,13 +736,27 @@ void repository_open_quick(Repository *repo)
 		qoi->sort = gtk_tree_model_sort_new_with_model(GTK_TREE_MODEL(qoi->filter));
 		gtk_tree_sortable_set_default_sort_func(GTK_TREE_SORTABLE(qoi->sort), cb_open_quick_sort_compare, qoi, NULL);
 		qoi->view = gtk_tree_view_new_with_model(GTK_TREE_MODEL(qoi->sort));
+
+		vc = gtk_tree_view_column_new();
 		cr = gtk_cell_renderer_text_new();
-		vc = gtk_tree_view_column_new_with_attributes(_("Filename"), cr, "text", 0, NULL);
+		title = gtk_label_new(_("Filename"));
+		gtk_widget_show(title);
+		gtk_tree_view_column_set_widget(vc, title);
 		gtk_tree_view_column_set_sort_column_id(vc, 0);
 		gtk_tree_view_append_column(GTK_TREE_VIEW(qoi->view), vc);
-		vc = gtk_tree_view_column_new_with_attributes(_("Location"), cr, "text", 1, NULL);
+		gtk_tree_view_column_pack_start(vc, cr, TRUE);
+		gtk_tree_view_column_set_cell_data_func(vc, cr, cdf_open_quick_filename, qoi, NULL);
+
+		vc = gtk_tree_view_column_new();
+		cr = gtk_cell_renderer_text_new();
+		title = gtk_label_new(_("Location"));
+		gtk_widget_show(title);
+		gtk_tree_view_column_set_widget(vc, title);
 		gtk_tree_view_column_set_sort_column_id(vc, 1);
 		gtk_tree_view_append_column(GTK_TREE_VIEW(qoi->view), vc);
+		gtk_tree_view_column_pack_start(vc, cr, TRUE);
+		gtk_tree_view_column_set_cell_data_func(vc, cr, cdf_open_quick_location, qoi, NULL);
+
 		scwin = gtk_scrolled_window_new(NULL, NULL);
 		gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scwin), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
 		gtk_container_add(GTK_CONTAINER(scwin), qoi->view);
