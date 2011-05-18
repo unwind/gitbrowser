@@ -694,6 +694,15 @@ static gint cb_open_quick_sort_compare(GtkTreeModel *model, GtkTreeIter *a, GtkT
 		ret = -1;
 	else
 		ret = g_utf8_collate(dira, dirb);
+	if(ret == 0)
+	{
+		gchar	*filea, *fileb;
+
+		gtk_tree_model_get(model, a, 0, &filea, -1);
+		gtk_tree_model_get(model, b, 0, &fileb, -1);
+		if(filea != NULL && fileb != NULL)
+			ret = g_utf8_collate(filea, fileb);
+	}
 
 	return ret;
 }
