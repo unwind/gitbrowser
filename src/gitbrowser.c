@@ -612,19 +612,13 @@ static void evt_open_quick_selection_changed(GtkTreeSelection *sel, gpointer use
 
 static gboolean cb_open_quick_filter(GtkTreeModel *model, GtkTreeIter *iter, gpointer user)
 {
-	QuickOpenInfo	*qoi = user;
-	gchar		*name;
-	gboolean	ret;
+	const QuickOpenInfo	*qoi = user;
+	gchar			*name;
 
 	gtk_tree_model_get(model, iter, 0, &name, -1);
 	if(name != NULL)
-	{
-		ret = strstr(name, qoi->filter_text) != NULL;
-	}
-	else
-		ret = TRUE;
-
-	return ret;
+		return strstr(name, qoi->filter_text) != NULL;
+	return TRUE;
 }
 
 static void evt_open_quick_view_row_activated(GtkWidget *view, GtkTreePath *path, GtkTreeViewColumn *column, gpointer user)
@@ -638,9 +632,13 @@ static void evt_open_quick_entry_changed(GtkWidget *wid, gpointer user)
 {
 	QuickOpenInfo	*qoi = user;
 	GtkTreePath	*first;
+	GTimer		*tmr;
 
 	g_strlcpy(qoi->filter_text, gtk_entry_buffer_get_text(gtk_entry_get_buffer(GTK_ENTRY(wid))), sizeof qoi->filter_text);
+	tmr = g_timer_new();
 	gtk_tree_model_filter_refilter(GTK_TREE_MODEL_FILTER(qoi->filter));
+	msgwin_status_add("List refiltered in %.1f ms", 1e3 * g_timer_elapsed(tmr, NULL));
+	g_timer_destroy(tmr);
 
 	first = gtk_tree_path_new_first();
 	gtk_tree_view_set_cursor(GTK_TREE_VIEW(qoi->view), first, NULL, FALSE);
@@ -681,28 +679,14 @@ static gboolean evt_open_quick_entry_key_press(GtkWidget *wid, GdkEventKey *evt,
 
 static gint cb_open_quick_sort_compare(GtkTreeModel *model, GtkTreeIter *a, GtkTreeIter *b, gpointer user)
 {
-	gchar	*dira, *dirb;
+	gchar	*dira, *dirb, *filea, *fileb;
 	gint	ret;
 
-	gtk_tree_model_get(model, a, 1, &dira, -1);
-	gtk_tree_model_get(model, b, 1, &dirb, -1);
-	if(dira == NULL && dirb == NULL)
-		ret = 0;
-	else if(dira == NULL && dirb != NULL)
-		ret = 1;
-	else if(dira != NULL && dirb == NULL)
-		ret = -1;
-	else
-		ret = g_utf8_collate(dira, dirb);
+	gtk_tree_model_get(model, a, 0, &filea, 1, &dira, -1);
+	gtk_tree_model_get(model, b, 0, &fileb, 1, &dirb, -1);
+	ret = g_utf8_collate(dira, dirb);
 	if(ret == 0)
-	{
-		gchar	*filea, *fileb;
-
-		gtk_tree_model_get(model, a, 0, &filea, -1);
-		gtk_tree_model_get(model, b, 0, &fileb, -1);
-		if(filea != NULL && fileb != NULL)
-			ret = g_utf8_collate(filea, fileb);
-	}
+		ret = g_utf8_collate(filea, fileb);
 
 	return ret;
 }
