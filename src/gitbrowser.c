@@ -53,6 +53,8 @@ typedef struct
 	GtkTreeModel		*filter;
 	GtkTreeModel		*sort;
 	gchar			filter_text[128];	/* Cached so we don't need to query GtkEntry on each filter callback. */
+	guint			filter_idle;
+	GtkTreeIter		filter_iter;		/* For idle. */
 } QuickOpenInfo;
 
 typedef struct
@@ -405,6 +407,7 @@ Repository * repository_new(const gchar *root_path)
 	r->quick_open.names = NULL;
 	r->quick_open.view = NULL;
 	r->quick_open.filter_text[0] = '\0';
+	r->quick_open.filter_idle = 0;
 
 	g_hash_table_insert(gitbrowser.repositories, r->root_path, r);
 
@@ -520,7 +523,6 @@ static void repository_to_list(const Repository *repo, GtkTreeModel *model, Quic
 	{
 		GTimer	*tmr = g_timer_new();
 		recurse_repository_to_list(model, &iter, buf, len, qoi);
-		printf("%u bytes of names stored, fixing\n", (unsigned int) qoi->names->len);
 		/* Now we need to fixup. */
 		if(gtk_tree_model_get_iter_first(GTK_TREE_MODEL(qoi->store), &iter))
 		{
@@ -531,9 +533,10 @@ static void repository_to_list(const Repository *repo, GtkTreeModel *model, Quic
 				gtk_tree_model_get(GTK_TREE_MODEL(qoi->store), &iter, 0, &name, 1, &path, -1);
 				name = qoi->names->str + GPOINTER_TO_SIZE(name);
 				path = qoi->names->str + GPOINTER_TO_SIZE(path);
-				gtk_list_store_set(qoi->store, &iter, 0, name, 1, path, -1);
+				gtk_list_store_set(qoi->store, &iter, 0, name, 1, path, 2, TRUE, -1);
 			} while(gtk_tree_model_iter_next(GTK_TREE_MODEL(qoi->store), &iter));
 		}
+		gtk_main_iteration_do(FALSE);
 		msgwin_status_add("List populated in %.1f ms", 1e3 * g_timer_elapsed(tmr, NULL));
 		printf("List populated in %.1f ms\n", 1e3 * g_timer_elapsed(tmr, NULL));
 		g_timer_destroy(tmr);
@@ -610,21 +613,6 @@ static void evt_open_quick_selection_changed(GtkTreeSelection *sel, gpointer use
 	gtk_dialog_set_response_sensitive(GTK_DIALOG(qoi->dialog), GTK_RESPONSE_OK, gtk_tree_selection_count_selected_rows(sel) > 0);
 }
 
-static gboolean cb_open_quick_filter(GtkTreeModel *model, GtkTreeIter *iter, gpointer user)
-{
-	const QuickOpenInfo	*qoi = user;
-
-	if(qoi->filter_text[0] != '\0')
-	{
-		gchar	*name;
-
-		gtk_tree_model_get(model, iter, 0, &name, -1);
-		if(name != NULL)
-			return strstr(name, qoi->filter_text) != NULL;
-	}
-	return TRUE;
-}
-
 static void evt_open_quick_view_row_activated(GtkWidget *view, GtkTreePath *path, GtkTreeViewColumn *column, gpointer user)
 {
 	QuickOpenInfo	*qoi = user;
@@ -632,22 +620,49 @@ static void evt_open_quick_view_row_activated(GtkWidget *view, GtkTreePath *path
 	gtk_dialog_response(GTK_DIALOG(qoi->dialog), GTK_RESPONSE_OK);
 }
 
+static gboolean cb_open_quick_filter_idle(gpointer user)
+{
+	QuickOpenInfo	*qoi = user;
+	guint		i;
+	GtkTreePath	*first;
+	gboolean	valid = TRUE;
+	GTimer		*tmr;
+
+	tmr = g_timer_new();
+	for(i = 0; i < 150 && valid; i++)
+	{
+		gchar	*name;
+
+		gtk_tree_model_get(GTK_TREE_MODEL(qoi->store), &qoi->filter_iter, 0, &name, -1);
+		gtk_list_store_set(GTK_LIST_STORE(qoi->store), &qoi->filter_iter, 2, strstr(name, qoi->filter_text) != NULL, -1);
+		valid = gtk_tree_model_iter_next(GTK_TREE_MODEL(qoi->store), &qoi->filter_iter);
+	}
+	msgwin_status_add("Filtered %u rows in %.1f ms", i, 1e3 * g_timer_elapsed(tmr, NULL));
+	g_timer_destroy(tmr);
+	if(!valid)
+	{
+		/* Done! */
+		first = gtk_tree_path_new_first();
+		gtk_tree_view_set_cursor(GTK_TREE_VIEW(qoi->view), first, NULL, FALSE);
+		gtk_tree_path_free(first);
+		qoi->filter_idle = 0;
+		return FALSE;
+	}
+	return TRUE;
+}
+
 static void evt_open_quick_entry_changed(GtkWidget *wid, gpointer user)
 {
 	QuickOpenInfo	*qoi = user;
-	GtkTreePath	*first;
-	GTimer		*tmr;
 
 	g_strlcpy(qoi->filter_text, gtk_entry_buffer_get_text(gtk_entry_get_buffer(GTK_ENTRY(wid))), sizeof qoi->filter_text);
-	tmr = g_timer_new();
-	gtk_tree_model_filter_refilter(GTK_TREE_MODEL_FILTER(qoi->filter));
-	msgwin_status_add("List refiltered in %.1f ms", 1e3 * g_timer_elapsed(tmr, NULL));
-	g_timer_destroy(tmr);
-
-	first = gtk_tree_path_new_first();
-	gtk_tree_view_set_cursor(GTK_TREE_VIEW(qoi->view), first, NULL, FALSE);
-	gtk_tree_path_free(first);
-
+	if(gtk_tree_model_get_iter_first(GTK_TREE_MODEL(qoi->store), &qoi->filter_iter))
+	{
+		if(qoi->filter_idle == 0)
+		{
+			qoi->filter_idle = g_idle_add(cb_open_quick_filter_idle, qoi);
+		}
+	}
 	gtk_entry_set_icon_sensitive(GTK_ENTRY(wid), GTK_ENTRY_ICON_SECONDARY, qoi->filter_text[0] != '\0');
 }
 
@@ -730,7 +745,7 @@ void repository_open_quick(Repository *repo)
 		GtkCellRenderer         *cr;
 		GtkTreeViewColumn       *vc;
 
-		qoi->store = gtk_list_store_new(2, G_TYPE_POINTER, G_TYPE_POINTER);
+		qoi->store = gtk_list_store_new(3, G_TYPE_POINTER, G_TYPE_POINTER, G_TYPE_BOOLEAN);
 		qoi->names = g_string_sized_new(32 << 10);
 		repository_to_list(repo, gitbrowser.model, qoi);
 
@@ -741,7 +756,7 @@ void repository_open_quick(Repository *repo)
 		label = gtk_label_new(_("Select one or more document(s) to open. Type to filter filenames."));
 		gtk_box_pack_start(GTK_BOX(vbox), label, FALSE, FALSE, 0);
 		qoi->filter = gtk_tree_model_filter_new(GTK_TREE_MODEL(qoi->store), NULL);
-		gtk_tree_model_filter_set_visible_func(GTK_TREE_MODEL_FILTER(qoi->filter), cb_open_quick_filter, qoi, NULL);
+		gtk_tree_model_filter_set_visible_column(GTK_TREE_MODEL_FILTER(qoi->filter), 2);	/* Filter on the boolean column. */
 		qoi->sort = gtk_tree_model_sort_new_with_model(GTK_TREE_MODEL(qoi->filter));
 		gtk_tree_sortable_set_default_sort_func(GTK_TREE_SORTABLE(qoi->sort), cb_open_quick_sort_compare, qoi, NULL);
 		qoi->view = gtk_tree_view_new_with_model(GTK_TREE_MODEL(qoi->sort));
@@ -793,6 +808,7 @@ void repository_open_quick(Repository *repo)
 	if(gtk_dialog_run(GTK_DIALOG(qoi->dialog)) == GTK_RESPONSE_OK)
 	{
 		GList	*selection = gtk_tree_selection_get_selected_rows(qoi->selection, NULL), *iter;
+
 
 		for(iter = selection; iter != NULL; iter = g_list_next(iter))
 		{
