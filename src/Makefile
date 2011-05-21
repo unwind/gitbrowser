@@ -1,5 +1,5 @@
 #
-# Ultra-trivial Makefile.
+# Trivial Makefile to build the gitbrowser Geany plugin.
 #
 
 CFLAGS=`pkg-config --cflags geany` -fPIC -Wall -pedantic -g
