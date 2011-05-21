@@ -58,7 +58,6 @@ typedef struct
 	GArray			*array;			/* Used during construction. */
 	gsize			array_size;
 	GtkTreeModel		*filter;
-	GtkTreeModel		*sort;
 	gchar			filter_text[128];	/* Cached so we don't need to query GtkEntry on each filter callback. */
 	guint			filter_idle;
 	GtkTreeIter		filter_iter;		/* For idle. */
@@ -409,7 +408,6 @@ Repository * repository_new(const gchar *root_path)
 	r->quick_open.dialog = NULL;
 	r->quick_open.filter = NULL;
 	r->quick_open.selection = NULL;
-	r->quick_open.sort = NULL;
 	r->quick_open.store = NULL;
 	r->quick_open.names = NULL;
 	r->quick_open.view = NULL;
@@ -726,20 +724,6 @@ static gboolean evt_open_quick_entry_key_press(GtkWidget *wid, GdkEventKey *evt,
 	return FALSE;
 }
 
-static gint cb_open_quick_sort_compare(GtkTreeModel *model, GtkTreeIter *a, GtkTreeIter *b, gpointer user)
-{
-	gchar	*dira, *dirb, *filea, *fileb;
-	gint	ret;
-
-	gtk_tree_model_get(model, a, 0, &filea, 1, &dira, -1);
-	gtk_tree_model_get(model, b, 0, &fileb, 1, &dirb, -1);
-	ret = g_utf8_collate(dira, dirb);
-	if(ret == 0)
-		ret = g_utf8_collate(filea, fileb);
-
-	return ret;
-}
-
 static void cdf_open_quick_filename(GtkTreeViewColumn *tree_column, GtkCellRenderer *cell, GtkTreeModel *model, GtkTreeIter *iter, gpointer user)
 {
 	gchar	*filename;
@@ -785,9 +769,7 @@ void repository_open_quick(Repository *repo)
 		gtk_box_pack_start(GTK_BOX(vbox), label, FALSE, FALSE, 0);
 		qoi->filter = gtk_tree_model_filter_new(GTK_TREE_MODEL(qoi->store), NULL);
 		gtk_tree_model_filter_set_visible_column(GTK_TREE_MODEL_FILTER(qoi->filter), 2);	/* Filter on the boolean column. */
-		qoi->sort = gtk_tree_model_sort_new_with_model(GTK_TREE_MODEL(qoi->filter));
-/*		gtk_tree_sortable_set_default_sort_func(GTK_TREE_SORTABLE(qoi->sort), cb_open_quick_sort_compare, qoi, NULL);*/
-		qoi->view = gtk_tree_view_new_with_model(GTK_TREE_MODEL(qoi->sort));
+		qoi->view = gtk_tree_view_new_with_model(GTK_TREE_MODEL(qoi->filter));
 
 		vc = gtk_tree_view_column_new();
 		cr = gtk_cell_renderer_text_new();
@@ -808,6 +790,7 @@ void repository_open_quick(Repository *repo)
 		gtk_tree_view_append_column(GTK_TREE_VIEW(qoi->view), vc);
 		gtk_tree_view_column_pack_start(vc, cr, TRUE);
 		gtk_tree_view_column_set_cell_data_func(vc, cr, cdf_open_quick_location, qoi, NULL);
+		gtk_tree_view_set_headers_clickable(GTK_TREE_VIEW(qoi->view), FALSE);
 
 		scwin = gtk_scrolled_window_new(NULL, NULL);
 		gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scwin), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
@@ -837,35 +820,28 @@ void repository_open_quick(Repository *repo)
 	{
 		GList	*selection = gtk_tree_selection_get_selected_rows(qoi->selection, NULL), *iter;
 
-
 		for(iter = selection; iter != NULL; iter = g_list_next(iter))
 		{
-			GtkTreePath	*unsorted;
+			GtkTreePath	*unfiltered;
 
-			if((unsorted = gtk_tree_model_sort_convert_path_to_child_path(GTK_TREE_MODEL_SORT(qoi->sort), iter->data)) != NULL)
+			if((unfiltered = gtk_tree_model_filter_convert_path_to_child_path(GTK_TREE_MODEL_FILTER(qoi->filter), iter->data)) != NULL)
 			{
-				GtkTreePath	*unfiltered;
+				GtkTreeIter	here;
 
-				if((unfiltered = gtk_tree_model_filter_convert_path_to_child_path(GTK_TREE_MODEL_FILTER(qoi->filter), unsorted)) != NULL)
+				if(gtk_tree_model_get_iter(GTK_TREE_MODEL(qoi->store), &here, unfiltered))
 				{
-					GtkTreeIter	here;
+					gchar	buf[2048], *dpath, *dname, *fn;
+					gint	len;
 
-					if(gtk_tree_model_get_iter(GTK_TREE_MODEL(qoi->store), &here, unfiltered))
+					gtk_tree_model_get(GTK_TREE_MODEL(qoi->store), &here, 0, &dname, 1, &dpath, -1);
+					if((len = g_snprintf(buf, sizeof buf, "%s%s%s", dpath, G_DIR_SEPARATOR_S, dname)) < sizeof buf)
 					{
-						gchar	buf[2048], *dpath, *dname, *fn;
-						gint	len;
-
-						gtk_tree_model_get(GTK_TREE_MODEL(qoi->store), &here, 0, &dname, 1, &dpath, -1);
-						if((len = g_snprintf(buf, sizeof buf, "%s%s%s", dpath, G_DIR_SEPARATOR_S, dname)) < sizeof buf)
+						if((fn = g_filename_from_utf8(buf, (gssize) len, NULL, NULL, NULL)) != NULL)
 						{
-							if((fn = g_filename_from_utf8(buf, (gssize) len, NULL, NULL, NULL)) != NULL)
-							{
-								document_open_file(buf, FALSE, NULL, NULL);
-								g_free(fn);
-							}
+							document_open_file(buf, FALSE, NULL, NULL);
+							g_free(fn);
 						}
 					}
-					gtk_tree_path_free(unsorted);
 				}
 				gtk_tree_path_free(unfiltered);
 			}
