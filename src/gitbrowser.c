@@ -629,12 +629,15 @@ static gboolean cb_open_quick_filter_idle(gpointer user)
 	GTimer		*tmr;
 
 	tmr = g_timer_new();
-	for(i = 0; i < 150 && valid; i++)
+	for(i = 0; g_timer_elapsed(tmr, NULL) < 50e-3 && valid; i++)
 	{
-		gchar	*name;
+		gchar		*name;
+		gboolean	old_visible, new_visible;
 
-		gtk_tree_model_get(GTK_TREE_MODEL(qoi->store), &qoi->filter_iter, 0, &name, -1);
-		gtk_list_store_set(GTK_LIST_STORE(qoi->store), &qoi->filter_iter, 2, strstr(name, qoi->filter_text) != NULL, -1);
+		gtk_tree_model_get(GTK_TREE_MODEL(qoi->store), &qoi->filter_iter, 0, &name, 2, &old_visible, -1);
+		new_visible = strstr(name, qoi->filter_text) != NULL;
+		if(new_visible != old_visible)
+			gtk_list_store_set(GTK_LIST_STORE(qoi->store), &qoi->filter_iter, 2, new_visible, -1);
 		valid = gtk_tree_model_iter_next(GTK_TREE_MODEL(qoi->store), &qoi->filter_iter);
 	}
 	msgwin_status_add("Filtered %u rows in %.1f ms", i, 1e3 * g_timer_elapsed(tmr, NULL));
@@ -758,7 +761,7 @@ void repository_open_quick(Repository *repo)
 		qoi->filter = gtk_tree_model_filter_new(GTK_TREE_MODEL(qoi->store), NULL);
 		gtk_tree_model_filter_set_visible_column(GTK_TREE_MODEL_FILTER(qoi->filter), 2);	/* Filter on the boolean column. */
 		qoi->sort = gtk_tree_model_sort_new_with_model(GTK_TREE_MODEL(qoi->filter));
-		gtk_tree_sortable_set_default_sort_func(GTK_TREE_SORTABLE(qoi->sort), cb_open_quick_sort_compare, qoi, NULL);
+/*		gtk_tree_sortable_set_default_sort_func(GTK_TREE_SORTABLE(qoi->sort), cb_open_quick_sort_compare, qoi, NULL);*/
 		qoi->view = gtk_tree_view_new_with_model(GTK_TREE_MODEL(qoi->sort));
 
 		vc = gtk_tree_view_column_new();
