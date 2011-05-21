@@ -43,6 +43,11 @@ enum {
 	NUM_KEYS
 };
 
+typedef struct {
+	gpointer		name;
+	gpointer		path;
+} QuickOpenPair;
+
 typedef struct
 {
 	GtkWidget		*dialog;
@@ -50,6 +55,8 @@ typedef struct
 	GtkTreeSelection	*selection;
 	GtkListStore		*store;			/* Only pointers in here. */
 	GString			*names;			/* All the names! */
+	GArray			*array;			/* Used during construction. */
+	gsize			array_size;
 	GtkTreeModel		*filter;
 	GtkTreeModel		*sort;
 	gchar			filter_text[128];	/* Cached so we don't need to query GtkEntry on each filter callback. */
@@ -470,24 +477,34 @@ static void recurse_repository_to_list(GtkTreeModel *model, GtkTreeIter *iter, g
 		}
 		else
 		{
-			GtkTreeIter	liter;
 			gchar		*dpath, *slash;
-			gpointer	off_name, off_path;
+			QuickOpenPair	pair;
 
 			/* Append name and path to the big string buffer, putting "naked" offsets in the pointers. */
-			off_name = GSIZE_TO_POINTER(string_store(qoi->names, dname));
+			pair.name = GSIZE_TO_POINTER(string_store(qoi->names, dname));
 			dpath = g_filename_display_name(path);
 			/* Remove the last component, which is dname itself, and we don't want it in the Location column. */
 			if((slash = g_utf8_strrchr(dpath, -1, G_DIR_SEPARATOR)) != NULL)
 				*slash = '\0';
-			off_path = GSIZE_TO_POINTER(string_store(qoi->names, dpath));
-			gtk_list_store_insert_with_values(qoi->store, &liter, INT_MAX, 0, off_name, 1, off_path, -1);
+			pair.path = GSIZE_TO_POINTER(string_store(qoi->names, dpath));
 			g_free(dpath);
+			g_array_append_val(qoi->array, pair);
+			qoi->array_size++;
 		}
 		/* Undo our modifications to the global path. */
 		path[old_length] = '\0';
 		path_length = old_length;
 	} while(gtk_tree_model_iter_next(model, iter));
+}
+
+static gint cb_array_sort(gconstpointer a, gconstpointer b)
+{
+	const QuickOpenPair	*pa = a, *pb = b;
+	const gint		ret = g_utf8_collate(pa->path, pb->path);
+
+	if(ret == 0)
+		return g_utf8_collate(pa->name, pb->name);
+	return ret;
 }
 
 static void repository_to_list(const Repository *repo, GtkTreeModel *model, QuickOpenInfo *qoi)
@@ -522,21 +539,29 @@ static void repository_to_list(const Repository *repo, GtkTreeModel *model, Quic
 	if(len < sizeof buf)
 	{
 		GTimer	*tmr = g_timer_new();
+		gsize	i;
+
+		qoi->array = g_array_new(FALSE, FALSE, sizeof (QuickOpenPair));
+		qoi->array_size = 0;
 		recurse_repository_to_list(model, &iter, buf, len, qoi);
 		/* Now we need to fixup. */
-		if(gtk_tree_model_get_iter_first(GTK_TREE_MODEL(qoi->store), &iter))
+		for(i = 0; i < qoi->array_size; i++)
 		{
-			do
-			{
-				gpointer	name, path;
+			QuickOpenPair	*pair = &g_array_index(qoi->array, QuickOpenPair, i);
 
-				gtk_tree_model_get(GTK_TREE_MODEL(qoi->store), &iter, 0, &name, 1, &path, -1);
-				name = qoi->names->str + GPOINTER_TO_SIZE(name);
-				path = qoi->names->str + GPOINTER_TO_SIZE(path);
-				gtk_list_store_set(qoi->store, &iter, 0, name, 1, path, 2, TRUE, -1);
-			} while(gtk_tree_model_iter_next(GTK_TREE_MODEL(qoi->store), &iter));
+			pair->name = qoi->names->str + GPOINTER_TO_SIZE(pair->name);
+			pair->path = qoi->names->str + GPOINTER_TO_SIZE(pair->path);
 		}
-		gtk_main_iteration_do(FALSE);
+		/* Now sort the array, hoping that's faster than sorting a tree model later on. */
+		g_array_sort(qoi->array, cb_array_sort);
+		/* Finally, use the array to populate the list store. */
+		for(i = 0; i < qoi->array_size; i++)
+		{
+			const QuickOpenPair	*pair = &g_array_index(qoi->array, QuickOpenPair, i);
+			gtk_list_store_insert_with_values(qoi->store, &iter, INT_MAX, 0, pair->name, 1, pair->path, 2, TRUE, -1);
+		}
+		/* We no longer need the sorting array, so throw it away. */
+		g_array_free(qoi->array, TRUE);
 		msgwin_status_add("List populated in %.1f ms", 1e3 * g_timer_elapsed(tmr, NULL));
 		printf("List populated in %.1f ms\n", 1e3 * g_timer_elapsed(tmr, NULL));
 		g_timer_destroy(tmr);
