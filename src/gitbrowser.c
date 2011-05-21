@@ -1,3 +1,23 @@
+/*
+ * gitbrowser - A geany plugin to work with Git repositories.
+ *
+ * Copyright (C) 2011 by Emil Brink <emil@obsession.se>.
+ *
+ * This file is part of gitbrowser.
+ *
+ * gitbrowser is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * Foobar is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with gitbrowser.  If not, see <http://www.gnu.org/licenses/>.
+*/
 
 #include <string.h>
 
@@ -5,8 +25,10 @@
 
 #include "geanyplugin.h"
 
-#define	MNEMONIC_NAME		"gitbrowser"
-#define	PATH_SEPARATOR_CHAR	':'
+#define	MNEMONIC_NAME			"gitbrowser"
+#define	CFG_REPOSITORIES		"repositories"
+#define	CFG_QUICK_OPEN_FILTER_MAX_TIME	"quick_open_filter_max_time"
+#define	PATH_SEPARATOR_CHAR		':'
 
 GeanyPlugin         *geany_plugin;
 GeanyData           *geany_data;
@@ -16,7 +38,7 @@ PLUGIN_VERSION_CHECK(147)
 
 PLUGIN_SET_INFO("Git Browser",
 		"A minimalistic browser for Git repositories.",
-		"0.1",
+		"0.2",
 		"Emil Brink <emil@obsession.se>")
 
 enum
@@ -65,8 +87,8 @@ typedef struct
 
 typedef struct
 {
-	gchar		root_path[1024];	/* Root path, this is where the ".git/" subdirectory is. */
-	QuickOpenInfo	quick_open;		/* State tracking for the "Quick Open" command's dialog. */
+	gchar		root_path[1024];		/* Root path, this is where the ".git/" subdirectory is. */
+	QuickOpenInfo	quick_open;			/* State tracking for the "Quick Open" command's dialog. */
 } Repository;
 
 static struct
@@ -77,10 +99,12 @@ static struct
 	GtkWidget	*action_menu_items[NUM_COMMANDS];
 	GtkWidget	*main_menu;
 	GtkTreePath	*click_path;
-	GHashTable	*repositories;		/* Hashed on root path. */
+	GHashTable	*repositories;			/* Hashed on root path. */
 
 	GeanyKeyGroup	*key_group;
 	gchar		*config_filename;
+
+	guint		quick_open_filter_max_time;	/* In milliseconds. */
 } gitbrowser;
 
 /* -------------------------------------------------------------------------------------------------------------- */
@@ -560,8 +584,6 @@ static void repository_to_list(const Repository *repo, GtkTreeModel *model, Quic
 		}
 		/* We no longer need the sorting array, so throw it away. */
 		g_array_free(qoi->array, TRUE);
-		msgwin_status_add("List populated in %.1f ms", 1e3 * g_timer_elapsed(tmr, NULL));
-		printf("List populated in %.1f ms\n", 1e3 * g_timer_elapsed(tmr, NULL));
 		g_timer_destroy(tmr);
 	}
 }
@@ -591,9 +613,10 @@ void repository_save_all(GtkTreeModel *model)
 	} while(gtk_tree_model_iter_next(model, &iter));
 
 	out = g_key_file_new();
-
-	g_key_file_set_string(out, MNEMONIC_NAME, "repositories", repos->str);
+	g_key_file_set_string(out, MNEMONIC_NAME, CFG_REPOSITORIES, repos->str);
 	g_string_free(repos, TRUE);
+	g_key_file_set_integer(out, MNEMONIC_NAME, CFG_QUICK_OPEN_FILTER_MAX_TIME, gitbrowser.quick_open_filter_max_time);
+
 	if((data = g_key_file_to_data(out, NULL, NULL)) != NULL)
 	{
 		utils_write_file(gitbrowser.config_filename, data);
@@ -609,7 +632,7 @@ void repository_load_all(void)
 	in = g_key_file_new();
 	if(g_key_file_load_from_file(in, gitbrowser.config_filename, G_KEY_FILE_NONE, NULL))
 	{
-		gchar	*repos = g_key_file_get_string(in, MNEMONIC_NAME, "repositories", NULL);
+		gchar	*repos = g_key_file_get_string(in, MNEMONIC_NAME, CFG_REPOSITORIES, NULL);
 
 		if(repos != NULL)
 		{
@@ -625,6 +648,7 @@ void repository_load_all(void)
 			
 			g_free(repos);
 		}
+		gitbrowser.quick_open_filter_max_time = g_key_file_get_integer(in, MNEMONIC_NAME, CFG_QUICK_OPEN_FILTER_MAX_TIME, NULL);
 	}
 	g_key_file_free(in);
 }
@@ -650,9 +674,10 @@ static gboolean cb_open_quick_filter_idle(gpointer user)
 	GtkTreePath	*first;
 	gboolean	valid = TRUE;
 	GTimer		*tmr;
+	const gdouble	max_time = 1e-3 * gitbrowser.quick_open_filter_max_time;
 
 	tmr = g_timer_new();
-	for(i = 0; g_timer_elapsed(tmr, NULL) < 50e-3 && valid; i++)
+	for(i = 0; g_timer_elapsed(tmr, NULL) < max_time && valid; i++)
 	{
 		gchar		*name;
 		gboolean	old_visible, new_visible;
@@ -663,7 +688,6 @@ static gboolean cb_open_quick_filter_idle(gpointer user)
 			gtk_list_store_set(GTK_LIST_STORE(qoi->store), &qoi->filter_iter, 2, new_visible, -1);
 		valid = gtk_tree_model_iter_next(GTK_TREE_MODEL(qoi->store), &qoi->filter_iter);
 	}
-	msgwin_status_add("Filtered %u rows in %.1f ms", i, 1e3 * g_timer_elapsed(tmr, NULL));
 	g_timer_destroy(tmr);
 	if(!valid)
 	{
@@ -1285,6 +1309,7 @@ void plugin_init(GeanyData *geany_data)
 	gitbrowser.model = tree_model_new();
 	gitbrowser.view = tree_view_new(gitbrowser.model);
 	gitbrowser.repositories = g_hash_table_new(g_str_hash, g_str_equal);
+	gitbrowser.quick_open_filter_max_time = 50;
 
 	gitbrowser.key_group = plugin_set_key_group(geany_plugin, MNEMONIC_NAME, NUM_KEYS, NULL);
 	keybindings_set_item(gitbrowser.key_group, KEY_REPOSITORY_OPEN_QUICK_FROM_DOCUMENT, cb_key_group_callback, GDK_KEY_O, GDK_SHIFT_MASK | GDK_CONTROL_MASK, "repository-open-quick-from-document", _("Quick Open from Document"), gitbrowser.action_menu_items[CMD_REPOSITORY_OPEN_QUICK_FROM_DOCUMENT]);
