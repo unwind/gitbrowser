@@ -28,6 +28,7 @@
 #define	MNEMONIC_NAME			"gitbrowser"
 #define	CFG_REPOSITORIES		"repositories"
 #define	CFG_QUICK_OPEN_FILTER_MAX_TIME	"quick_open_filter_max_time"
+#define	CFG_QUICK_OPEN_HIDE_SRC		"quick_open_hide_re"
 #define	PATH_SEPARATOR_CHAR		':'
 
 GeanyPlugin         *geany_plugin;
@@ -56,6 +57,8 @@ enum
 	CMD_DIR_COLLAPSE,
 
 	CMD_FILE_OPEN,
+
+	CMD_PREFERENCES,
 
 	NUM_COMMANDS
 };
@@ -99,12 +102,18 @@ static struct
 	GtkWidget	*action_menu_items[NUM_COMMANDS];
 	GtkWidget	*main_menu;
 	GtkTreePath	*click_path;
+	GRegex		*quick_open_hide;
+
 	GHashTable	*repositories;			/* Hashed on root path. */
 
 	GeanyKeyGroup	*key_group;
-	gchar		*config_filename;
 
-	guint		quick_open_filter_max_time;	/* In milliseconds. */
+	gchar		*config_filename;
+	StashGroup	*prefs;
+	GtkWidget	*prefs_dlg;
+
+	gchar		*quick_open_hide_src;
+	gint		quick_open_filter_max_time;	/* In milliseconds. */
 } gitbrowser;
 
 /* -------------------------------------------------------------------------------------------------------------- */
@@ -112,6 +121,8 @@ static struct
 Repository *	repository_new(const gchar *root_path);
 Repository *	repository_find_by_path(const gchar *path);
 void		repository_open_quick(Repository *repo);
+
+static void	open_quick_reset_filter(void);
 
 gboolean	tree_model_find_repository(GtkTreeModel *model, const gchar *root_path, GtkTreeIter *iter);
 void		tree_model_build_repository(GtkTreeModel *model, GtkTreeIter *root, const gchar *root_path);
@@ -327,6 +338,45 @@ static void cmd_file_open(GtkAction *action, gpointer user)
 	tree_model_open_document(gitbrowser.model, gitbrowser.click_path);
 }
 
+static void cmd_preferences(GtkAction *action, gpointer user)
+{
+	static GtkWidget	*wid1 = NULL, *wid2 = NULL;
+
+	CMD_INIT("preferences", _("Preferences ..."), _("Opens the configuration window, where you can adjust settings."), GTK_STOCK_PREFERENCES);
+
+	if(gitbrowser.prefs_dlg == NULL)
+	{
+		GtkWidget	*vbox, *table, *label;
+
+		gitbrowser.prefs_dlg  = gtk_dialog_new_with_buttons(_("Preferences"), NULL, GTK_DIALOG_MODAL, GTK_STOCK_OK, GTK_RESPONSE_OK, GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL, NULL);
+
+		vbox = ui_dialog_vbox_new(GTK_DIALOG(gitbrowser.prefs_dlg));
+		table = gtk_table_new(2, 2, FALSE);
+		label = gtk_label_new(_("Hide Files Matching (RE)"));
+		gtk_table_attach(GTK_TABLE(table), label, 0, 1, 0, 1,  0, 0, 0, 0);
+		wid1 = gtk_entry_new();
+		gtk_table_attach(GTK_TABLE(table), wid1, 1, 2, 0, 1,  GTK_EXPAND | GTK_FILL, 0, 0, 0);
+		ui_hookup_widget(gitbrowser.prefs_dlg, wid1, CFG_QUICK_OPEN_HIDE_SRC);
+		label = gtk_label_new(_("Filter Update Time (ms)"));
+		gtk_table_attach(GTK_TABLE(table), label, 0, 1, 1, 2,  0, 0, 0, 0);
+		wid2 = gtk_spin_button_new_with_range(10, 400, 10);
+		gtk_table_attach(GTK_TABLE(table), wid2, 1, 2, 1, 2,  GTK_EXPAND | GTK_FILL, 0, 0, 0);
+		ui_hookup_widget(gitbrowser.prefs_dlg, wid2, CFG_QUICK_OPEN_FILTER_MAX_TIME);
+
+		gtk_box_pack_start(GTK_BOX(vbox), table, GTK_EXPAND, GTK_EXPAND, 0);
+	}
+	stash_group_display(gitbrowser.prefs, wid1);
+	stash_group_display(gitbrowser.prefs, wid2);
+	gtk_widget_show_all(gitbrowser.prefs_dlg);
+	if(gtk_dialog_run(GTK_DIALOG(gitbrowser.prefs_dlg )) == GTK_RESPONSE_OK)
+	{
+		open_quick_reset_filter();
+		stash_group_update(gitbrowser.prefs, wid1);
+		stash_group_update(gitbrowser.prefs, wid2);
+	}
+	gtk_widget_hide(gitbrowser.prefs_dlg );
+}
+
 void init_commands(GtkAction **actions, GtkWidget **menu_items)
 {
 	typedef void (*ActivateOrCreate)(GtkAction *action, gpointer user);
@@ -342,6 +392,7 @@ void init_commands(GtkAction **actions, GtkWidget **menu_items)
 		cmd_dir_expand,
 		cmd_dir_collapse,
 		cmd_file_open,
+		cmd_preferences,
 	};
 	size_t	i;
 
@@ -499,19 +550,22 @@ static void recurse_repository_to_list(GtkTreeModel *model, GtkTreeIter *iter, g
 		}
 		else
 		{
-			gchar		*dpath, *slash;
-			QuickOpenPair	pair;
+			if(gitbrowser.quick_open_hide == NULL || !g_regex_match(gitbrowser.quick_open_hide, dname, 0, NULL))
+			{
+				gchar		*dpath, *slash;
+				QuickOpenPair	pair;
 
-			/* Append name and path to the big string buffer, putting "naked" offsets in the pointers. */
-			pair.name = GSIZE_TO_POINTER(string_store(qoi->names, dname));
-			dpath = g_filename_display_name(path);
-			/* Remove the last component, which is dname itself, and we don't want it in the Location column. */
-			if((slash = g_utf8_strrchr(dpath, -1, G_DIR_SEPARATOR)) != NULL)
-				*slash = '\0';
-			pair.path = GSIZE_TO_POINTER(string_store(qoi->names, dpath));
-			g_free(dpath);
-			g_array_append_val(qoi->array, pair);
-			qoi->array_size++;
+				/* Append name and path to the big string buffer, putting "naked" offsets in the pointers. */
+				pair.name = GSIZE_TO_POINTER(string_store(qoi->names, dname));
+				dpath = g_filename_display_name(path);
+				/* Remove the last component, which is dname itself, and we don't want it in the Location column. */
+				if((slash = g_utf8_strrchr(dpath, -1, G_DIR_SEPARATOR)) != NULL)
+					*slash = '\0';
+				pair.path = GSIZE_TO_POINTER(string_store(qoi->names, dpath));
+				g_free(dpath);
+				g_array_append_val(qoi->array, pair);
+				qoi->array_size++;
+			}
 		}
 		/* Undo our modifications to the global path. */
 		path[old_length] = '\0';
@@ -615,7 +669,7 @@ void repository_save_all(GtkTreeModel *model)
 	out = g_key_file_new();
 	g_key_file_set_string(out, MNEMONIC_NAME, CFG_REPOSITORIES, repos->str);
 	g_string_free(repos, TRUE);
-	g_key_file_set_integer(out, MNEMONIC_NAME, CFG_QUICK_OPEN_FILTER_MAX_TIME, gitbrowser.quick_open_filter_max_time);
+	stash_group_save_to_key_file(gitbrowser.prefs, out);
 
 	if((data = g_key_file_to_data(out, NULL, NULL)) != NULL)
 	{
@@ -632,12 +686,12 @@ void repository_load_all(void)
 	in = g_key_file_new();
 	if(g_key_file_load_from_file(in, gitbrowser.config_filename, G_KEY_FILE_NONE, NULL))
 	{
-		gchar	*repos = g_key_file_get_string(in, MNEMONIC_NAME, CFG_REPOSITORIES, NULL);
+		gchar	*str;
 
-		if(repos != NULL)
+		if((str = g_key_file_get_string(in, MNEMONIC_NAME, CFG_REPOSITORIES, NULL)) != NULL)
 		{
 			gchar	separator[] = { PATH_SEPARATOR_CHAR, '\0' };
-			gchar	**repo_vector = g_strsplit(repos, separator, 0);
+			gchar	**repo_vector = g_strsplit(str, separator, 0);
 			gsize	i;
 
 			for(i = 0; repo_vector[i] != NULL; i++)
@@ -645,11 +699,12 @@ void repository_load_all(void)
 				Repository	*repo = repository_new(repo_vector[i]);
 				tree_model_build_repository(gitbrowser.model, NULL, repo->root_path);
 			}
-			
-			g_free(repos);
+			g_free(str);
 		}
-		gitbrowser.quick_open_filter_max_time = g_key_file_get_integer(in, MNEMONIC_NAME, CFG_QUICK_OPEN_FILTER_MAX_TIME, NULL);
 	}
+	stash_group_load_from_key_file(gitbrowser.prefs, in);
+	open_quick_reset_filter();
+
 	g_key_file_free(in);
 }
 
@@ -1177,6 +1232,8 @@ static void menu_popup_repositories(GdkEventButton *evt)
 	gtk_menu_shell_append(GTK_MENU_SHELL(gitbrowser.main_menu), gitbrowser.action_menu_items[CMD_REPOSITORY_ADD_FROM_DOCUMENT]);
 	gtk_menu_shell_append(GTK_MENU_SHELL(gitbrowser.main_menu), gtk_separator_menu_item_new());
 	gtk_menu_shell_append(GTK_MENU_SHELL(gitbrowser.main_menu), gitbrowser.action_menu_items[CMD_REPOSITORY_REMOVE_ALL]);
+	gtk_menu_shell_append(GTK_MENU_SHELL(gitbrowser.main_menu), gtk_separator_menu_item_new());
+	gtk_menu_shell_append(GTK_MENU_SHELL(gitbrowser.main_menu), gitbrowser.action_menu_items[CMD_PREFERENCES]);
 	gtk_widget_show_all(gitbrowser.main_menu);
 	gtk_menu_popup(GTK_MENU(gitbrowser.main_menu), NULL, NULL, NULL, NULL, evt->button, evt->time);
 }
@@ -1289,6 +1346,17 @@ GtkWidget * tree_view_new(GtkTreeModel *model)
 
 /* -------------------------------------------------------------------------------------------------------------- */
 
+static void open_quick_reset_filter(void)
+{
+	if(gitbrowser.quick_open_hide != NULL)
+	{
+		g_regex_unref(gitbrowser.quick_open_hide);
+	}
+	gitbrowser.quick_open_hide = g_regex_new(gitbrowser.quick_open_hide_src, 0, 0, NULL);
+}
+
+/* -------------------------------------------------------------------------------------------------------------- */
+
 static void cb_key_group_callback(guint key_id)
 {
 	switch(key_id)
@@ -1310,6 +1378,7 @@ void plugin_init(GeanyData *geany_data)
 	gitbrowser.view = tree_view_new(gitbrowser.model);
 	gitbrowser.repositories = g_hash_table_new(g_str_hash, g_str_equal);
 	gitbrowser.quick_open_filter_max_time = 50;
+	gitbrowser.quick_open_hide = NULL;
 
 	gitbrowser.key_group = plugin_set_key_group(geany_plugin, MNEMONIC_NAME, NUM_KEYS, NULL);
 	keybindings_set_item(gitbrowser.key_group, KEY_REPOSITORY_OPEN_QUICK_FROM_DOCUMENT, cb_key_group_callback, GDK_KEY_O, GDK_SHIFT_MASK | GDK_CONTROL_MASK, "repository-open-quick-from-document", _("Quick Open from Document"), gitbrowser.action_menu_items[CMD_REPOSITORY_OPEN_QUICK_FROM_DOCUMENT]);
@@ -1318,6 +1387,11 @@ void plugin_init(GeanyData *geany_data)
 	utils_mkdir(dir, TRUE);
 	gitbrowser.config_filename = g_strconcat(dir, G_DIR_SEPARATOR_S, MNEMONIC_NAME ".conf", NULL);
 	g_free(dir);
+
+	gitbrowser.prefs = stash_group_new(MNEMONIC_NAME);
+	stash_group_add_entry(gitbrowser.prefs, &gitbrowser.quick_open_hide_src, CFG_QUICK_OPEN_HIDE_SRC, NULL, CFG_QUICK_OPEN_HIDE_SRC);
+	stash_group_add_spin_button_integer(gitbrowser.prefs, &gitbrowser.quick_open_filter_max_time, CFG_QUICK_OPEN_FILTER_MAX_TIME, 50, CFG_QUICK_OPEN_FILTER_MAX_TIME);
+	gitbrowser.prefs_dlg = NULL;
 
 	repository_load_all();
 
@@ -1331,6 +1405,7 @@ void plugin_init(GeanyData *geany_data)
 void plugin_cleanup(void)
 {
 	repository_save_all(gitbrowser.model);
+	stash_group_free(gitbrowser.prefs);
 	g_free(gitbrowser.config_filename);
 	g_hash_table_destroy(gitbrowser.repositories);
 }
