@@ -357,7 +357,7 @@ static void cmd_preferences(GtkAction *action, gpointer user)
 		wid1 = gtk_entry_new();
 		gtk_table_attach(GTK_TABLE(table), wid1, 1, 2, 0, 1,  GTK_EXPAND | GTK_FILL, 0, 0, 0);
 		ui_hookup_widget(gitbrowser.prefs_dlg, wid1, CFG_QUICK_OPEN_HIDE_SRC);
-		label = gtk_label_new(_("Filter Update Time (ms)"));
+		label = gtk_label_new(_("Filter Max Update Time (ms)"));
 		gtk_table_attach(GTK_TABLE(table), label, 0, 1, 1, 2,  0, 0, 0, 0);
 		wid2 = gtk_spin_button_new_with_range(10, 400, 10);
 		gtk_table_attach(GTK_TABLE(table), wid2, 1, 2, 1, 2,  GTK_EXPAND | GTK_FILL, 0, 0, 0);
@@ -1352,7 +1352,10 @@ static void open_quick_reset_filter(void)
 	{
 		g_regex_unref(gitbrowser.quick_open_hide);
 	}
-	gitbrowser.quick_open_hide = g_regex_new(gitbrowser.quick_open_hide_src, 0, 0, NULL);
+	if(gitbrowser.quick_open_hide_src[0] != '\0')
+		gitbrowser.quick_open_hide = g_regex_new(gitbrowser.quick_open_hide_src, 0, 0, NULL);
+	else
+		gitbrowser.quick_open_hide = NULL;
 }
 
 /* -------------------------------------------------------------------------------------------------------------- */
