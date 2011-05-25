@@ -346,11 +346,12 @@ static void cmd_preferences(GtkAction *action, gpointer user)
 
 	if(gitbrowser.prefs_dlg == NULL)
 	{
-		GtkWidget	*vbox, *table, *label;
+		GtkWidget	*vbox, *frame, *table, *label;
 
 		gitbrowser.prefs_dlg  = gtk_dialog_new_with_buttons(_("Preferences"), NULL, GTK_DIALOG_MODAL, GTK_STOCK_OK, GTK_RESPONSE_OK, GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL, NULL);
 
 		vbox = ui_dialog_vbox_new(GTK_DIALOG(gitbrowser.prefs_dlg));
+		frame = gtk_frame_new(_("Quick Open Filtering"));
 		table = gtk_table_new(2, 2, FALSE);
 		label = gtk_label_new(_("Hide Files Matching (RE)"));
 		gtk_table_attach(GTK_TABLE(table), label, 0, 1, 0, 1,  0, 0, 0, 0);
@@ -363,7 +364,8 @@ static void cmd_preferences(GtkAction *action, gpointer user)
 		gtk_table_attach(GTK_TABLE(table), wid2, 1, 2, 1, 2,  GTK_EXPAND | GTK_FILL, 0, 0, 0);
 		ui_hookup_widget(gitbrowser.prefs_dlg, wid2, CFG_QUICK_OPEN_FILTER_MAX_TIME);
 
-		gtk_box_pack_start(GTK_BOX(vbox), table, GTK_EXPAND, GTK_EXPAND, 0);
+		gtk_container_add(GTK_CONTAINER(frame), table);
+		gtk_box_pack_start(GTK_BOX(vbox), frame, GTK_EXPAND, GTK_EXPAND, 0);
 	}
 	stash_group_display(gitbrowser.prefs, wid1);
 	stash_group_display(gitbrowser.prefs, wid2);
