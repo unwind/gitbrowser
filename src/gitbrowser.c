@@ -580,6 +580,9 @@ static void repository_to_list(const Repository *repo, GtkTreeModel *model, Quic
 		GTimer	*tmr = g_timer_new();
 		gsize	i;
 
+		/* Be prepared for being re-run on the same repository, so clear data first. */
+		g_string_truncate(qoi->names, 0);
+		gtk_list_store_clear(qoi->store);
 		qoi->array = g_array_new(FALSE, FALSE, sizeof (QuickOpenPair));
 		qoi->array_size = 0;
 		recurse_repository_to_list(model, &iter, buf, len, qoi);
@@ -1314,12 +1317,27 @@ GtkWidget * tree_view_new(GtkTreeModel *model)
 
 static void open_quick_reset_filter(void)
 {
+	GList	*repos, *iter;
+
 	if(gitbrowser.quick_open_hide != NULL)
 		g_regex_unref(gitbrowser.quick_open_hide);
 	if(gitbrowser.quick_open_hide_src[0] != '\0')
 		gitbrowser.quick_open_hide = g_regex_new(gitbrowser.quick_open_hide_src, 0, 0, NULL);
 	else
 		gitbrowser.quick_open_hide = NULL;
+
+	/* Because the filter might have changed, we need to go through and re-populate all the lists. */
+	if((repos = g_hash_table_get_values(gitbrowser.repositories)) != NULL)
+	{
+		for(iter = repos; iter != NULL; iter = g_list_next(iter))
+		{
+			Repository	*repo = iter->data;
+
+			if(repo->quick_open.dialog != NULL)
+				repository_to_list(repo, gitbrowser.model, &repo->quick_open);
+		}
+		g_list_free(repos);
+	}
 }
 
 /* -------------------------------------------------------------------------------------------------------------- */
@@ -1372,8 +1390,6 @@ static void cb_configure_response(GtkDialog *dialog, gint response, gpointer use
 {
 	if(response == GTK_RESPONSE_OK || response == GTK_RESPONSE_APPLY)
 	{
-		PrefsWidgets	*prefs_widgets = user;
-
 		stash_group_update(gitbrowser.prefs, GTK_WIDGET(dialog));
 		stash_group_update(gitbrowser.prefs, GTK_WIDGET(dialog));
 		open_quick_reset_filter();
