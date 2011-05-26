@@ -2,5 +2,14 @@
 # Top-level Makefile for the gitbrowser Geany plugin. Not much to see, here.
 #
 
-src/gitbrowser.so:
+.PHONY:	clean
+
+# --------------------------------------------------------------
+
+all:
 	cd src && $(MAKE)
+
+# --------------------------------------------------------------
+
+clean:
+	cd src && $(MAKE) clean
