@@ -58,8 +58,6 @@ enum
 
 	CMD_FILE_OPEN,
 
-	CMD_PREFERENCES,
-
 	NUM_COMMANDS
 };
 
@@ -110,11 +108,16 @@ static struct
 
 	gchar		*config_filename;
 	StashGroup	*prefs;
-	GtkWidget	*prefs_dlg;
 
 	gchar		*quick_open_hide_src;
 	gint		quick_open_filter_max_time;	/* In milliseconds. */
 } gitbrowser;
+
+typedef struct
+{
+	GtkWidget	*filter_re;
+	GtkWidget	*filter_time;
+} PrefsWidgets;
 
 /* -------------------------------------------------------------------------------------------------------------- */
 
@@ -338,47 +341,6 @@ static void cmd_file_open(GtkAction *action, gpointer user)
 	tree_model_open_document(gitbrowser.model, gitbrowser.click_path);
 }
 
-static void cmd_preferences(GtkAction *action, gpointer user)
-{
-	static GtkWidget	*wid1 = NULL, *wid2 = NULL;
-
-	CMD_INIT("preferences", _("Preferences ..."), _("Opens the configuration window, where you can adjust settings."), GTK_STOCK_PREFERENCES);
-
-	if(gitbrowser.prefs_dlg == NULL)
-	{
-		GtkWidget	*vbox, *frame, *table, *label;
-
-		gitbrowser.prefs_dlg  = gtk_dialog_new_with_buttons(_("Preferences"), NULL, GTK_DIALOG_MODAL, GTK_STOCK_OK, GTK_RESPONSE_OK, GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL, NULL);
-
-		vbox = ui_dialog_vbox_new(GTK_DIALOG(gitbrowser.prefs_dlg));
-		frame = gtk_frame_new(_("Quick Open Filtering"));
-		table = gtk_table_new(2, 2, FALSE);
-		label = gtk_label_new(_("Hide Files Matching (RE)"));
-		gtk_table_attach(GTK_TABLE(table), label, 0, 1, 0, 1,  0, 0, 0, 0);
-		wid1 = gtk_entry_new();
-		gtk_table_attach(GTK_TABLE(table), wid1, 1, 2, 0, 1,  GTK_EXPAND | GTK_FILL, 0, 0, 0);
-		ui_hookup_widget(gitbrowser.prefs_dlg, wid1, CFG_QUICK_OPEN_HIDE_SRC);
-		label = gtk_label_new(_("Filter Max Update Time (ms)"));
-		gtk_table_attach(GTK_TABLE(table), label, 0, 1, 1, 2,  0, 0, 0, 0);
-		wid2 = gtk_spin_button_new_with_range(10, 400, 10);
-		gtk_table_attach(GTK_TABLE(table), wid2, 1, 2, 1, 2,  GTK_EXPAND | GTK_FILL, 0, 0, 0);
-		ui_hookup_widget(gitbrowser.prefs_dlg, wid2, CFG_QUICK_OPEN_FILTER_MAX_TIME);
-
-		gtk_container_add(GTK_CONTAINER(frame), table);
-		gtk_box_pack_start(GTK_BOX(vbox), frame, GTK_EXPAND, GTK_EXPAND, 0);
-	}
-	stash_group_display(gitbrowser.prefs, wid1);
-	stash_group_display(gitbrowser.prefs, wid2);
-	gtk_widget_show_all(gitbrowser.prefs_dlg);
-	if(gtk_dialog_run(GTK_DIALOG(gitbrowser.prefs_dlg )) == GTK_RESPONSE_OK)
-	{
-		open_quick_reset_filter();
-		stash_group_update(gitbrowser.prefs, wid1);
-		stash_group_update(gitbrowser.prefs, wid2);
-	}
-	gtk_widget_hide(gitbrowser.prefs_dlg );
-}
-
 void init_commands(GtkAction **actions, GtkWidget **menu_items)
 {
 	typedef void (*ActivateOrCreate)(GtkAction *action, gpointer user);
@@ -394,7 +356,6 @@ void init_commands(GtkAction **actions, GtkWidget **menu_items)
 		cmd_dir_expand,
 		cmd_dir_collapse,
 		cmd_file_open,
-		cmd_preferences,
 	};
 	size_t	i;
 
@@ -647,30 +608,35 @@ static void repository_to_list(const Repository *repo, GtkTreeModel *model, Quic
 void repository_save_all(GtkTreeModel *model)
 {
 	GtkTreeIter	root, iter;
-	GString		*repos;
+	GString		*repos = NULL;
 	GKeyFile	*out;
 	gchar		*data;
 
-	if(!gtk_tree_model_get_iter_first(model, &root) || !gtk_tree_model_iter_children(model, &iter, &root))
-		return;
-	repos = g_string_new("");
-	do
+	if(gtk_tree_model_get_iter_first(model, &root) && gtk_tree_model_iter_children(model, &iter, &root))
 	{
-		gchar	*dpath, *fn;
-
-		gtk_tree_model_get(model, &iter, 1, &dpath, -1);
-		if((fn = g_filename_from_utf8(dpath, -1, NULL, NULL, NULL)) != NULL)
+		repos = g_string_new("");
+		do
 		{
-			if(repos->len > 0)
-				g_string_append_c(repos, PATH_SEPARATOR_CHAR);
-			g_string_append(repos, fn);
-			g_free(fn);
-		}
-	} while(gtk_tree_model_iter_next(model, &iter));
+			gchar	*dpath, *fn;
+
+			gtk_tree_model_get(model, &iter, 1, &dpath, -1);
+			if((fn = g_filename_from_utf8(dpath, -1, NULL, NULL, NULL)) != NULL)
+			{
+				if(repos->len > 0)
+					g_string_append_c(repos, PATH_SEPARATOR_CHAR);
+				g_string_append(repos, fn);
+				g_free(fn);
+			}
+		} while(gtk_tree_model_iter_next(model, &iter));
+	}
 
 	out = g_key_file_new();
-	g_key_file_set_string(out, MNEMONIC_NAME, CFG_REPOSITORIES, repos->str);
-	g_string_free(repos, TRUE);
+
+	if(repos != NULL)
+	{
+		g_key_file_set_string(out, MNEMONIC_NAME, CFG_REPOSITORIES, repos->str);
+		g_string_free(repos, TRUE);
+	}
 	stash_group_save_to_key_file(gitbrowser.prefs, out);
 
 	if((data = g_key_file_to_data(out, NULL, NULL)) != NULL)
@@ -1234,8 +1200,6 @@ static void menu_popup_repositories(GdkEventButton *evt)
 	gtk_menu_shell_append(GTK_MENU_SHELL(gitbrowser.main_menu), gitbrowser.action_menu_items[CMD_REPOSITORY_ADD_FROM_DOCUMENT]);
 	gtk_menu_shell_append(GTK_MENU_SHELL(gitbrowser.main_menu), gtk_separator_menu_item_new());
 	gtk_menu_shell_append(GTK_MENU_SHELL(gitbrowser.main_menu), gitbrowser.action_menu_items[CMD_REPOSITORY_REMOVE_ALL]);
-	gtk_menu_shell_append(GTK_MENU_SHELL(gitbrowser.main_menu), gtk_separator_menu_item_new());
-	gtk_menu_shell_append(GTK_MENU_SHELL(gitbrowser.main_menu), gitbrowser.action_menu_items[CMD_PREFERENCES]);
 	gtk_widget_show_all(gitbrowser.main_menu);
 	gtk_menu_popup(GTK_MENU(gitbrowser.main_menu), NULL, NULL, NULL, NULL, evt->button, evt->time);
 }
@@ -1351,9 +1315,7 @@ GtkWidget * tree_view_new(GtkTreeModel *model)
 static void open_quick_reset_filter(void)
 {
 	if(gitbrowser.quick_open_hide != NULL)
-	{
 		g_regex_unref(gitbrowser.quick_open_hide);
-	}
 	if(gitbrowser.quick_open_hide_src[0] != '\0')
 		gitbrowser.quick_open_hide = g_regex_new(gitbrowser.quick_open_hide_src, 0, 0, NULL);
 	else
@@ -1396,7 +1358,6 @@ void plugin_init(GeanyData *geany_data)
 	gitbrowser.prefs = stash_group_new(MNEMONIC_NAME);
 	stash_group_add_entry(gitbrowser.prefs, &gitbrowser.quick_open_hide_src, CFG_QUICK_OPEN_HIDE_SRC, NULL, CFG_QUICK_OPEN_HIDE_SRC);
 	stash_group_add_spin_button_integer(gitbrowser.prefs, &gitbrowser.quick_open_filter_max_time, CFG_QUICK_OPEN_FILTER_MAX_TIME, 50, CFG_QUICK_OPEN_FILTER_MAX_TIME);
-	gitbrowser.prefs_dlg = NULL;
 
 	repository_load_all();
 
@@ -1405,6 +1366,51 @@ void plugin_init(GeanyData *geany_data)
 	gtk_container_add(GTK_CONTAINER(scwin), gitbrowser.view);
 	gtk_widget_show_all(scwin);
 	gtk_notebook_append_page(GTK_NOTEBOOK(geany->main_widgets->sidebar_notebook), scwin, gtk_label_new("Git Browser"));
+}
+
+static void cb_configure_response(GtkDialog *dialog, gint response, gpointer user)
+{
+	if(response == GTK_RESPONSE_OK || response == GTK_RESPONSE_APPLY)
+	{
+		PrefsWidgets	*prefs_widgets = user;
+
+		stash_group_update(gitbrowser.prefs, GTK_WIDGET(dialog));
+		stash_group_update(gitbrowser.prefs, GTK_WIDGET(dialog));
+		open_quick_reset_filter();
+	}
+}
+
+GtkWidget * plugin_configure(GtkDialog *dlg)
+{
+	GtkWidget		*vbox, *frame, *table, *label;
+	static PrefsWidgets	prefs_widgets;
+
+	vbox = gtk_vbox_new(FALSE, 0);
+
+	frame = gtk_frame_new(_("Quick Open Filtering"));
+	table = gtk_table_new(2, 2, FALSE);
+	label = gtk_label_new(_("Hide Files Matching (RE)"));
+	gtk_table_attach(GTK_TABLE(table), label, 0, 1, 0, 1,  0, 0, 0, 0);
+	prefs_widgets.filter_re = gtk_entry_new();
+	gtk_table_attach(GTK_TABLE(table), prefs_widgets.filter_re, 1, 2, 0, 1,  GTK_EXPAND | GTK_FILL, 0, 0, 0);
+	ui_hookup_widget(GTK_WIDGET(dlg), prefs_widgets.filter_re, CFG_QUICK_OPEN_HIDE_SRC);
+	label = gtk_label_new(_("Filter Max Update Time (ms)"));
+	gtk_table_attach(GTK_TABLE(table), label, 0, 1, 1, 2,  0, 0, 0, 0);
+	prefs_widgets.filter_time = gtk_spin_button_new_with_range(10, 400, 5);
+	gtk_table_attach(GTK_TABLE(table), prefs_widgets.filter_time, 1, 2, 1, 2,  GTK_EXPAND | GTK_FILL, 0, 0, 0);
+	ui_hookup_widget(GTK_WIDGET(dlg), prefs_widgets.filter_time, CFG_QUICK_OPEN_FILTER_MAX_TIME);
+
+	gtk_container_add(GTK_CONTAINER(frame), table);
+	gtk_box_pack_start(GTK_BOX(vbox), frame, GTK_EXPAND, GTK_EXPAND, 0);
+
+	stash_group_display(gitbrowser.prefs, GTK_WIDGET(dlg));
+	stash_group_display(gitbrowser.prefs, GTK_WIDGET(dlg));
+
+	gtk_widget_show_all(vbox);
+
+	g_signal_connect(G_OBJECT(dlg), "response", G_CALLBACK(cb_configure_response), &prefs_widgets);
+
+	return vbox;
 }
 
 void plugin_cleanup(void)
