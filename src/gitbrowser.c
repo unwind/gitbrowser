@@ -38,8 +38,8 @@ GeanyFunctions      *geany_functions;
 PLUGIN_VERSION_CHECK(147)
 
 PLUGIN_SET_INFO("Git Browser",
-		"A minimalistic browser for Git repositories.",
-		"0.2",
+		"A minimalistic browser for Git repositories. Implements a 'Quick Open' command to quickly jump to any file in a repository.",
+		"1.0-alpha",
 		"Emil Brink <emil@obsession.se>")
 
 enum
@@ -1405,13 +1405,15 @@ GtkWidget * plugin_configure(GtkDialog *dlg)
 
 	frame = gtk_frame_new(_("Quick Open Filtering"));
 	table = gtk_table_new(2, 2, FALSE);
-	label = gtk_label_new(_("Hide Files Matching (RE)"));
-	gtk_table_attach(GTK_TABLE(table), label, 0, 1, 0, 1,  0, 0, 0, 0);
+	label = gtk_label_new(_("Always hide files matching (RE)"));
+	gtk_misc_set_alignment(GTK_MISC(label), 1.0f, 0.5f);
+	gtk_table_attach(GTK_TABLE(table), label, 0, 1, 0, 1,  GTK_FILL, 0, 5, 0);
 	prefs_widgets.filter_re = gtk_entry_new();
 	gtk_table_attach(GTK_TABLE(table), prefs_widgets.filter_re, 1, 2, 0, 1,  GTK_EXPAND | GTK_FILL, 0, 0, 0);
 	ui_hookup_widget(GTK_WIDGET(dlg), prefs_widgets.filter_re, CFG_QUICK_OPEN_HIDE_SRC);
-	label = gtk_label_new(_("Filter Max Update Time (ms)"));
-	gtk_table_attach(GTK_TABLE(table), label, 0, 1, 1, 2,  0, 0, 0, 0);
+	label = gtk_label_new(_("Keyboard filter for max (ms)"));
+	gtk_misc_set_alignment(GTK_MISC(label), 1.0f, 0.5f);
+	gtk_table_attach(GTK_TABLE(table), label, 0, 1, 1, 2,  GTK_FILL, 0, 5, 0);
 	prefs_widgets.filter_time = gtk_spin_button_new_with_range(10, 400, 5);
 	gtk_table_attach(GTK_TABLE(table), prefs_widgets.filter_time, 1, 2, 1, 2,  GTK_EXPAND | GTK_FILL, 0, 0, 0);
 	ui_hookup_widget(GTK_WIDGET(dlg), prefs_widgets.filter_time, CFG_QUICK_OPEN_FILTER_MAX_TIME);
