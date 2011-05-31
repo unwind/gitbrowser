@@ -75,7 +75,10 @@ typedef struct
 {
 	GtkWidget		*dialog;
 	GtkWidget		*view;
+	GtkWidget		*label;
 	GtkTreeSelection	*selection;
+	gsize			files_total;
+	gsize			files_filtered;
 	GtkListStore		*store;			/* Only pointers in here. */
 	GString			*names;			/* All the names! */
 	GArray			*array;			/* Used during construction. */
@@ -447,6 +450,8 @@ Repository * repository_new(const gchar *root_path)
 	r->quick_open.dialog = NULL;
 	r->quick_open.filter = NULL;
 	r->quick_open.selection = NULL;
+	r->quick_open.files_total = 0;
+	r->quick_open.files_filtered = 0;
 	r->quick_open.store = NULL;
 	r->quick_open.names = NULL;
 	r->quick_open.view = NULL;
@@ -528,6 +533,7 @@ static void recurse_repository_to_list(GtkTreeModel *model, GtkTreeIter *iter, g
 				pair.path = GSIZE_TO_POINTER(string_store(qoi->names, dpath));
 				g_free(dpath);
 				g_array_append_val(qoi->array, pair);
+				qoi->files_total++;
 				qoi->array_size++;
 			}
 		}
@@ -582,6 +588,7 @@ static void repository_to_list(const Repository *repo, GtkTreeModel *model, Quic
 		gsize	i;
 
 		/* Be prepared for being re-run on the same repository, so clear data first. */
+		qoi->files_total = qoi->files_filtered = 0;
 		g_string_truncate(qoi->names, 0);
 		gtk_list_store_clear(qoi->store);
 		qoi->array = g_array_new(FALSE, FALSE, sizeof (QuickOpenPair));
@@ -694,6 +701,17 @@ static void evt_open_quick_view_row_activated(GtkWidget *view, GtkTreePath *path
 	gtk_dialog_response(GTK_DIALOG(qoi->dialog), GTK_RESPONSE_OK);
 }
 
+static void open_quick_update_label(QuickOpenInfo *qoi)
+{
+	gchar	buf[32];
+
+	if(qoi->files_filtered == 0)
+		g_snprintf(buf, sizeof buf, _("Showing all %lu files."), qoi->files_total);
+	else
+		g_snprintf(buf, sizeof buf, _("Showing %lu/%lu files."), qoi->files_total - qoi->files_filtered, qoi->files_total);
+	gtk_label_set(GTK_LABEL(qoi->label), buf);
+}
+
 static gboolean cb_open_quick_filter_idle(gpointer user)
 {
 	QuickOpenInfo	*qoi = user;
@@ -713,9 +731,12 @@ static gboolean cb_open_quick_filter_idle(gpointer user)
 		new_visible = strstr(name, qoi->filter_text) != NULL;
 		if(new_visible != old_visible)
 			gtk_list_store_set(GTK_LIST_STORE(qoi->store), &qoi->filter_iter, 2, new_visible, -1);
+		if(!new_visible)
+			qoi->files_filtered++;
 		valid = gtk_tree_model_iter_next(GTK_TREE_MODEL(qoi->store), &qoi->filter_iter);
 	}
 	g_timer_destroy(tmr);
+	open_quick_update_label(qoi);
 	if(!valid)
 	{
 		/* Done! */
@@ -739,6 +760,7 @@ static void evt_open_quick_entry_changed(GtkWidget *wid, gpointer user)
 		{
 			qoi->filter_idle = g_idle_add(cb_open_quick_filter_idle, qoi);
 		}
+		qoi->files_filtered = 0;
 	}
 	gtk_entry_set_icon_sensitive(GTK_ENTRY(wid), GTK_ENTRY_ICON_SECONDARY, qoi->filter_text[0] != '\0');
 }
@@ -807,14 +829,28 @@ void repository_open_quick(Repository *repo)
 		GtkWidget		*vbox, *label, *scwin, *entry, *title;
 		GtkCellRenderer         *cr;
 		GtkTreeViewColumn       *vc;
+		gchar			tbuf[64], *name;
 
 		qoi->store = gtk_list_store_new(3, G_TYPE_POINTER, G_TYPE_POINTER, G_TYPE_BOOLEAN);
 		qoi->names = g_string_sized_new(32 << 10);
 		repository_to_list(repo, gitbrowser.model, qoi);
 
-		qoi->dialog = gtk_dialog_new_with_buttons(_("Git Repository Quick Open"), NULL, GTK_DIALOG_MODAL, GTK_STOCK_OK, GTK_RESPONSE_OK, GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL, NULL);
+		if((name = strrchr(repo->root_path, G_DIR_SEPARATOR)) != NULL)
+			name++;
+		else
+			name = repo->root_path;
+		g_snprintf(tbuf, sizeof tbuf, _("Quick Open in Git Repository \"%s\""), name);
+
+		qoi->dialog = gtk_dialog_new_with_buttons(tbuf, NULL, GTK_DIALOG_MODAL, GTK_STOCK_OK, GTK_RESPONSE_OK, GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL, NULL);
 		gtk_dialog_set_default_response(GTK_DIALOG(qoi->dialog), GTK_RESPONSE_OK);
 		gtk_window_set_default_size(GTK_WINDOW(qoi->dialog), 600, 600);
+
+		qoi->label = gtk_label_new("");
+		gtk_box_pack_start(GTK_BOX(GTK_DIALOG(qoi->dialog)->action_area), qoi->label, FALSE, FALSE, 0);
+		gtk_box_reorder_child(GTK_BOX(GTK_DIALOG(qoi->dialog)->action_area), qoi->label, 0);
+		gtk_widget_show(qoi->label);
+		open_quick_update_label(qoi);
+
 		vbox = ui_dialog_vbox_new(GTK_DIALOG(qoi->dialog));
 		label = gtk_label_new(_("Select one or more document(s) to open. Type to filter filenames."));
 		gtk_box_pack_start(GTK_BOX(vbox), label, FALSE, FALSE, 0);
