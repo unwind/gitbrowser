@@ -94,6 +94,7 @@ typedef struct
 
 static struct
 {
+	gint		page;
 	GtkTreeModel	*model;
 	GtkWidget	*view;
 	GtkAction	*actions[NUM_COMMANDS];
@@ -1383,7 +1384,7 @@ void plugin_init(GeanyData *geany_data)
 	gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scwin), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
 	gtk_container_add(GTK_CONTAINER(scwin), gitbrowser.view);
 	gtk_widget_show_all(scwin);
-	gtk_notebook_append_page(GTK_NOTEBOOK(geany->main_widgets->sidebar_notebook), scwin, gtk_label_new("Git Browser"));
+	gitbrowser.page = gtk_notebook_append_page(GTK_NOTEBOOK(geany->main_widgets->sidebar_notebook), scwin, gtk_label_new("Git Browser"));
 }
 
 static void cb_configure_response(GtkDialog *dialog, gint response, gpointer user)
@@ -1433,6 +1434,7 @@ GtkWidget * plugin_configure(GtkDialog *dlg)
 
 void plugin_cleanup(void)
 {
+	gtk_notebook_remove_page(GTK_NOTEBOOK(geany->main_widgets->sidebar_notebook), gitbrowser.page);
 	repository_save_all(gitbrowser.model);
 	stash_group_free(gitbrowser.prefs);
 	g_free(gitbrowser.config_filename);
