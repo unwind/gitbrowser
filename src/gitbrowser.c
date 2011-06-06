@@ -1358,7 +1358,7 @@ static void open_quick_reset_filter(void)
 
 	if(gitbrowser.quick_open_hide != NULL)
 		g_regex_unref(gitbrowser.quick_open_hide);
-	if(gitbrowser.quick_open_hide_src[0] != '\0')
+	if(gitbrowser.quick_open_hide_src != NULL && gitbrowser.quick_open_hide_src[0] != '\0')
 		gitbrowser.quick_open_hide = g_regex_new(gitbrowser.quick_open_hide_src, 0, 0, NULL);
 	else
 		gitbrowser.quick_open_hide = NULL;
