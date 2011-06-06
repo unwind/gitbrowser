@@ -50,6 +50,7 @@ enum
 	CMD_REPOSITORY_REMOVE_ALL,
 	CMD_REPOSITORY_OPEN_QUICK,
 	CMD_REPOSITORY_OPEN_QUICK_FROM_DOCUMENT,
+	CMD_REPOSITORY_REFRESH,
 	CMD_REPOSITORY_MOVE_UP,
 	CMD_REPOSITORY_MOVE_DOWN,
 
@@ -284,6 +285,11 @@ static void cmd_repository_open_quick_from_document(GtkAction *action, gpointer 
 	repository_open_quick(repo);
 }
 
+static void cmd_repository_refresh(GtkAction *action, gpointer user)
+{
+	CMD_INIT("repository-refresh", _("Refresh"), _("Reloads the list of files contained in the repository"), GTK_STOCK_REFRESH);
+}
+
 static void cmd_repository_move_up(GtkAction *action, gpointer user)
 {
 	GtkTreeIter	here;
@@ -355,6 +361,7 @@ void init_commands(GtkAction **actions, GtkWidget **menu_items)
 		cmd_repository_remove_all,
 		cmd_repository_open_quick,
 		cmd_repository_open_quick_from_document,
+		cmd_repository_refresh,
 		cmd_repository_move_up,
 		cmd_repository_move_down,
 		cmd_dir_expand,
@@ -1250,6 +1257,7 @@ static void menu_popup_repository(GdkEventButton *evt)
 
 	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.action_menu_items[CMD_REPOSITORY_OPEN_QUICK]);
 	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_separator_menu_item_new());
+	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.action_menu_items[CMD_REPOSITORY_REFRESH]);
 	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.action_menu_items[CMD_REPOSITORY_MOVE_UP]);
 	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.action_menu_items[CMD_REPOSITORY_MOVE_DOWN]);
 	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_separator_menu_item_new());
