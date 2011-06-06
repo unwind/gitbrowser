@@ -287,7 +287,33 @@ static void cmd_repository_open_quick_from_document(GtkAction *action, gpointer 
 
 static void cmd_repository_refresh(GtkAction *action, gpointer user)
 {
+	GtkTreeIter	iter, child;
+	Repository	*repo = NULL;
+
 	CMD_INIT("repository-refresh", _("Refresh"), _("Reloads the list of files contained in the repository"), GTK_STOCK_REFRESH);
+
+	if(gtk_tree_model_get_iter(gitbrowser.model, &iter, gitbrowser.click_path))
+	{
+		gchar	*path = NULL;
+
+		gtk_tree_model_get(gitbrowser.model, &iter, 1, &path, -1);
+		if(path != NULL)
+		{
+			repo = repository_find_by_path(path);
+			if(repo != NULL)
+			{
+				/* First, clear away all the (top-level) child nodes of the repo, since we're about to re-build them. */
+				if(gtk_tree_model_iter_children(gitbrowser.model, &child, &iter))
+				{
+					while(gtk_tree_store_remove(GTK_TREE_STORE(gitbrowser.model), &child))
+						;
+					/* Then simply build it again. */
+					tree_model_build_repository(gitbrowser.model, &iter, repo->root_path);
+				}
+			}
+			g_free(path);
+		}
+	}
 }
 
 static void cmd_repository_move_up(GtkAction *action, gpointer user)
@@ -994,8 +1020,7 @@ void tree_model_build_repository(GtkTreeModel *model, GtkTreeIter *repo, const g
 {
 	GtkTreeIter	new;
 	const gchar	*slash;
-	gchar		*git_ls_files[] = { "git", "ls-files", NULL };
-	gchar		*git_stdout = NULL, *git_stderr = NULL;
+	gchar		*git_ls_files[] = { "git", "ls-files", NULL }, *git_stdout = NULL, *git_stderr = NULL;
 	GTimer		*timer;
 
 	slash = strrchr(root_path, G_DIR_SEPARATOR);
@@ -1013,16 +1038,15 @@ void tree_model_build_repository(GtkTreeModel *model, GtkTreeIter *repo, const g
 			repo = &new;
 			gtk_tree_store_append(GTK_TREE_STORE(model), repo, &iter);
 		}
+		/* At this point, we have a root iter in the tree, which we need to populate. */
+		gtk_tree_store_set(GTK_TREE_STORE(model), repo, 0, slash, 1, root_path, -1);
 	}
-	/* At this point, we have a root iter in the tree, which we need to populate. */
-	gtk_tree_store_set(GTK_TREE_STORE(model), repo, 0, slash, 1, root_path,-1);
-
 	/* Now list the repository, and build a tree representation. Easy-peasy, right? */
 	timer = g_timer_new();
 	if(subprocess_run(root_path, git_ls_files, NULL, &git_stdout, &git_stderr))
 	{
 		GtkTreePath	*path;
-		guint		counter = tree_model_build_populate(model, git_stdout, repo);
+		const guint	counter = tree_model_build_populate(model, git_stdout, repo);
 
 		g_free(git_stdout);
 		g_free(git_stderr);
