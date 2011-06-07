@@ -7,6 +7,18 @@ Gitbrowser does *not* aim to be a complete "solution" for working with Git repos
 
 I wrote it simply to "scratch an itch", I want something like this when working on my projects, but being quite new to Git I prefer to use it manually at a "low level", directly from the command line. Having a the plugin speeds up actual software development for me, since I can quickly jump between files and do edits.
 
+##Installation##
+At the moment, Gitbrowser is not available in any pre-packaged form, so you need to build it yourself. Luckily, that isn't too hard. The following steps should do it:
+
+1. Grab the code
+2. Using a terminal, enter the top-level `gitbrowser/` directory
+3. Type `make`
+4. Type `sudo ln -s $(pwd)/src/gitbrowser.so $(dirname $(dirname $(which geany)))/lib/geany`
+
+The final step is the most complicated; the purpose is to create a symbolic link from Geany's system-wide plugin directory to the library you just built. This assumes that you will want to keep the plugin in the source directory; if you rather would install it permanently you can move it to the indicated location instead, and then delete the source code.
+
+Keeping a symbolic link will of course make it easier to update the plugin if there are any changes (or if you do changes yourself).
+
 
 ##The Browser###
 Once activated in Geany's Plugin Manager, Gitbrowser will add its own page to the sidebar notebook. Initially, it will be empty and look like this:
