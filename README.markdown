@@ -25,7 +25,7 @@ Once activated in Geany's Plugin Manager, Gitbrowser will add its own page to th
 ![Empty Browser](https://github.com/unwind/gitbrowser/raw/master/doc/screenshots/empty.png "Empty Browser")
 
 Right-clicking on the word "Repositories" will bring up a popup menu that looks like so:
-![Root Menu](doc/screenshots/root-menu.png "Root Menu")
+![Root Menu](https://github.com/unwind/gitbrowser/raw/master/doc/screenshots/root-menu.png "Root Menu")
 
 Before you can do much here, you need to add one or more repositories to the browser.
 
@@ -40,7 +40,7 @@ The Gitbrowser's tree view will include *all* files that are part of a repositor
 
 ##Repository Commands##
 Once you have one or more repositories added, you can right-click on each repository to get another popup menu:
-![Repository Menu](doc/screenshots/repo-menu.png "Repository Menu")
+![Repository Menu](https://github.com/unwind/gitbrowser/raw/master/doc/screenshots/repo-menu.png "Repository Menu")
 
 The following sections describe the commands available on a repository.
 
@@ -48,7 +48,7 @@ The following sections describe the commands available on a repository.
 An important part of Gitbrowser is the 'Quick Open' command. It's available by right-clicking either the top Repositories tree node, or on a specific repository's root node. If you open it through Repositories, it will inspect the current document to figure out which repository to do Quick Open in.
 
 The Quick Open dialog looks like this:
-![Quick Open screenshot](doc/screenshots/quickopen.png "Quick Open")
+![Quick Open screenshot](https://github.com/unwind/gitbrowser/raw/master/doc/screenshots/quickopen.png "Quick Open")
 
 Once opened, Quick Open lets you use the arrow keys to navigate the big list of files contained in the repository, or type to filter (in "real-time") the list of files. This allows very quick navigation to a file once you know a few characters of its filename. Since many source code projects use regular naming schemes for its files, you can often cut down the number of files visible very quickly, and thus "home in" on the file you are interested in.
 
@@ -73,19 +73,19 @@ Pick the Remove command from the repository right-click menu to remove that repo
 Gitbrowser does not implement a whole lot of functionality for working with the actual contents of the repositories that you have added.
 
 If you right-click on a directory inside a repository, you will see this menu:
-![Directory Menu](doc/screenshots/dir-menu.png "Directory Menu")
+![Directory Menu](https://github.com/unwind/gitbrowser/raw/master/doc/screenshots/dir-menu.png "Directory Menu")
 
 These two obviously-named commands simply let you expand or collapse the directory. Currently, Gitbrowser does not save the expand/collapse state of the included repositories' files.
 
 Right-clicking on an actual file gives you this even more minimalistic menu:
-![File Menu](doc/screenshots/file-menu.png "File Menu")
+![File Menu](https://github.com/unwind/gitbrowser/raw/master/doc/screenshots/file-menu.png "File Menu")
 
 All you can do is make Gitbrowser attempt to open the file, which will simply open it in Geany.
 
 
 ##Configuring Gitbrowser##
 You can access Gitbrowser's configuration through Geany. The window looks like this:
-![Configuration Window](doc/screenshots/config.png "Configuration Window")
+![Configuration Window](https://github.com/unwind/gitbrowser/raw/master/doc/screenshots/config.png "Configuration Window")
 
 The options are as follows:
 
