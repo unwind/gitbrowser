@@ -22,7 +22,7 @@ Keeping a symbolic link will of course make it easier to update the plugin if th
 
 ##The Browser###
 Once activated in Geany's Plugin Manager, Gitbrowser will add its own page to the sidebar notebook. Initially, it will be empty and look like this:
-![Empty Browser](doc/screenshots/empty.png "Empty Browser")
+![Empty Browser](https://github.com/unwind/gitbrowser/raw/master/doc/screenshots/empty.png "Empty Browser")
 
 Right-clicking on the word "Repositories" will bring up a popup menu that looks like so:
 ![Root Menu](doc/screenshots/root-menu.png "Root Menu")
