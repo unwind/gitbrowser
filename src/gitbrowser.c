@@ -76,6 +76,7 @@ typedef struct
 {
 	GtkWidget		*dialog;
 	GtkWidget		*view;
+	GtkWidget		*spinner;
 	GtkWidget		*label;
 	GtkTreeSelection	*selection;
 	GtkListStore		*store;			/* Only pointers in here. */
@@ -774,6 +775,8 @@ static gboolean cb_open_quick_filter_idle(gpointer user)
 		gtk_tree_view_set_cursor(GTK_TREE_VIEW(qoi->view), first, NULL, FALSE);
 		gtk_tree_path_free(first);
 		qoi->filter_idle = 0;
+		gtk_spinner_stop(GTK_SPINNER(qoi->spinner));
+		gtk_widget_hide(qoi->spinner);
 		return FALSE;
 	}
 	return TRUE;
@@ -791,6 +794,8 @@ static void evt_open_quick_entry_changed(GtkWidget *wid, gpointer user)
 			qoi->filter_idle = g_idle_add(cb_open_quick_filter_idle, qoi);
 		}
 		qoi->files_filtered = 0;
+		gtk_spinner_start(GTK_SPINNER(qoi->spinner));
+		gtk_widget_show(qoi->spinner);
 	}
 	gtk_entry_set_icon_sensitive(GTK_ENTRY(wid), GTK_ENTRY_ICON_SECONDARY, qoi->filter_text[0] != '\0');
 }
@@ -856,7 +861,7 @@ void repository_open_quick(Repository *repo)
 
 	if(qoi->dialog == NULL)
 	{
-		GtkWidget		*vbox, *label, *scwin, *entry, *title;
+		GtkWidget		*vbox, *label, *scwin, *entry, *title, *hbox;
 		GtkCellRenderer         *cr;
 		GtkTreeViewColumn       *vc;
 		gchar			tbuf[64], *name;
@@ -875,11 +880,17 @@ void repository_open_quick(Repository *repo)
 		gtk_dialog_set_default_response(GTK_DIALOG(qoi->dialog), GTK_RESPONSE_OK);
 		gtk_window_set_default_size(GTK_WINDOW(qoi->dialog), 600, 600);
 
+		/* Pack some custom stuff into the action area, but first into a hbox for tidyness. */
+		hbox = gtk_hbox_new(FALSE, 0);
+		qoi->spinner = gtk_spinner_new();
+		gtk_box_pack_start(GTK_BOX(hbox), qoi->spinner, FALSE, FALSE, 0);
 		qoi->label = gtk_label_new("");
-		gtk_box_pack_start(GTK_BOX(GTK_DIALOG(qoi->dialog)->action_area), qoi->label, FALSE, FALSE, 0);
-		gtk_box_reorder_child(GTK_BOX(GTK_DIALOG(qoi->dialog)->action_area), qoi->label, 0);
-		gtk_widget_show(qoi->label);
+		gtk_box_pack_start(GTK_BOX(hbox), qoi->label, TRUE, TRUE, 0);
 		open_quick_update_label(qoi);
+		gtk_box_pack_start(GTK_BOX(GTK_DIALOG(qoi->dialog)->action_area), hbox, TRUE, TRUE, 0);
+		gtk_box_reorder_child(GTK_BOX(GTK_DIALOG(qoi->dialog)->action_area), hbox, 0);
+		gtk_widget_show_all(hbox);
+		gtk_widget_hide(qoi->spinner);
 
 		vbox = ui_dialog_vbox_new(GTK_DIALOG(qoi->dialog));
 		label = gtk_label_new(_("Select one or more document(s) to open. Type to filter filenames."));
