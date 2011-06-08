@@ -78,12 +78,11 @@ typedef struct
 	GtkWidget		*view;
 	GtkWidget		*label;
 	GtkTreeSelection	*selection;
+	GtkListStore		*store;			/* Only pointers in here. */
 	gsize			files_total;
 	gsize			files_filtered;
-	GtkListStore		*store;			/* Only pointers in here. */
 	GString			*names;			/* All the names! */
 	GArray			*array;			/* Used during construction. */
-	gsize			array_size;
 	GtkTreeModel		*filter;
 	gchar			filter_text[128];	/* Cached so we don't need to query GtkEntry on each filter callback. */
 	guint			filter_idle;
@@ -567,7 +566,6 @@ static void recurse_repository_to_list(GtkTreeModel *model, GtkTreeIter *iter, g
 				g_free(dpath);
 				g_array_append_val(qoi->array, pair);
 				qoi->files_total++;
-				qoi->array_size++;
 			}
 		}
 		/* Undo our modifications to the global path. */
@@ -625,10 +623,9 @@ static void repository_to_list(const Repository *repo, GtkTreeModel *model, Quic
 		g_string_truncate(qoi->names, 0);
 		gtk_list_store_clear(qoi->store);
 		qoi->array = g_array_new(FALSE, FALSE, sizeof (QuickOpenPair));
-		qoi->array_size = 0;
 		recurse_repository_to_list(model, &iter, buf, len, qoi);
 		/* Now we need to fixup. */
-		for(i = 0; i < qoi->array_size; i++)
+		for(i = 0; i < qoi->files_total; i++)
 		{
 			QuickOpenPair	*pair = &g_array_index(qoi->array, QuickOpenPair, i);
 
@@ -638,7 +635,7 @@ static void repository_to_list(const Repository *repo, GtkTreeModel *model, Quic
 		/* Now sort the array, hoping that's faster than sorting a tree model later on. */
 		g_array_sort(qoi->array, cb_array_sort);
 		/* Finally, use the array to populate the list store. */
-		for(i = 0; i < qoi->array_size; i++)
+		for(i = 0; i < qoi->files_total; i++)
 		{
 			const QuickOpenPair	*pair = &g_array_index(qoi->array, QuickOpenPair, i);
 			gtk_list_store_insert_with_values(qoi->store, &iter, INT_MAX, 0, pair->name, 1, pair->path, 2, TRUE, -1);
