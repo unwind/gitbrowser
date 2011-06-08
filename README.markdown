@@ -37,6 +37,13 @@ To add a new repository to the browser pick either "Add ..." or "Add from Docume
 
 The "Add ..." command will open up a standard file chooser, and you can pick the root directory containing your repository (the directory that contains the `.git/` directory). "Add from Document", will instead assume that the current document is part of a repository, and add that. It will find the root of the repository regardless of where in the repo the current document is located, it doesn't have to be in the repository's root.
 
+When you add a repository, Gitbrowser will log a message to Geany's general Status window:
+
+    22:48:21: Built repository "gitbrowser", 11 files added in 3.3 ms.
+    22:48:22: Built repository "linux-2.6", 36707 files added in 458.2 ms.
+
+As you can see, adding a repository is quite fast, even for very large repositories like the Linux kernel (your milage might vary, this is of course machine-dependent).
+
 The Gitbrowser's tree view will include *all* files that are part of a repository, regardless of type or extension. This is perhaps slighly pointless (you currently can't do anything with files that Geany can't open for editing), but it's also simple and does a lot to reinforce the idea that Gitbrowser simply lets you visualize your repositories as trees.
 
 
