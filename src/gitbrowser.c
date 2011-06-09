@@ -502,6 +502,9 @@ Repository * repository_find_by_path(const gchar *path)
 	GHashTableIter	iter;
 	gpointer	key, value;
 
+	if(path == NULL)
+		return NULL;
+
 	g_hash_table_iter_init(&iter, gitbrowser.repositories);
 	while(g_hash_table_iter_next(&iter, &key, &value))
 	{
