@@ -76,6 +76,7 @@ typedef struct
 {
 	GtkWidget		*dialog;
 	GtkWidget		*view;
+	GtkWidget		*entry;
 	GtkWidget		*spinner;
 	GtkWidget		*label;
 	GtkTreeSelection	*selection;
@@ -864,7 +865,7 @@ void repository_open_quick(Repository *repo)
 
 	if(qoi->dialog == NULL)
 	{
-		GtkWidget		*vbox, *label, *scwin, *entry, *title, *hbox;
+		GtkWidget		*vbox, *label, *scwin, *title, *hbox;
 		GtkCellRenderer         *cr;
 		GtkTreeViewColumn       *vc;
 		gchar			tbuf[64], *name;
@@ -928,14 +929,14 @@ void repository_open_quick(Repository *repo)
 		g_signal_connect(G_OBJECT(qoi->view), "row_activated", G_CALLBACK(evt_open_quick_view_row_activated), qoi);
 		gtk_container_add(GTK_CONTAINER(scwin), qoi->view);
 		gtk_box_pack_start(GTK_BOX(vbox), scwin, TRUE, TRUE, 0);
-		entry = gtk_entry_new();
-		gtk_entry_set_activates_default(GTK_ENTRY(entry), TRUE);
-		gtk_entry_set_icon_from_stock(GTK_ENTRY(entry), GTK_ENTRY_ICON_SECONDARY, GTK_STOCK_CLEAR);
-		gtk_entry_set_icon_sensitive(GTK_ENTRY(entry), GTK_ENTRY_ICON_SECONDARY, FALSE);
-		g_signal_connect(G_OBJECT(entry), "changed", G_CALLBACK(evt_open_quick_entry_changed), qoi);
-		g_signal_connect(G_OBJECT(entry), "key-press-event", G_CALLBACK(evt_open_quick_entry_key_press), qoi);
-		g_signal_connect(G_OBJECT(entry), "icon-release", G_CALLBACK(evt_open_quick_entry_icon_release), qoi);
-		gtk_box_pack_start(GTK_BOX(vbox), entry, FALSE, FALSE, 0);
+		qoi->entry = gtk_entry_new();
+		gtk_entry_set_activates_default(GTK_ENTRY(qoi->entry), TRUE);
+		gtk_entry_set_icon_from_stock(GTK_ENTRY(qoi->entry), GTK_ENTRY_ICON_SECONDARY, GTK_STOCK_CLEAR);
+		gtk_entry_set_icon_sensitive(GTK_ENTRY(qoi->entry), GTK_ENTRY_ICON_SECONDARY, FALSE);
+		g_signal_connect(G_OBJECT(qoi->entry), "changed", G_CALLBACK(evt_open_quick_entry_changed), qoi);
+		g_signal_connect(G_OBJECT(qoi->entry), "key-press-event", G_CALLBACK(evt_open_quick_entry_key_press), qoi);
+		g_signal_connect(G_OBJECT(qoi->entry), "icon-release", G_CALLBACK(evt_open_quick_entry_icon_release), qoi);
+		gtk_box_pack_start(GTK_BOX(vbox), qoi->entry, FALSE, FALSE, 0);
 
 		gtk_dialog_set_response_sensitive(GTK_DIALOG(qoi->dialog), GTK_RESPONSE_OK, FALSE);
 
@@ -944,9 +945,9 @@ void repository_open_quick(Repository *repo)
 		qoi->selection = gtk_tree_view_get_selection(GTK_TREE_VIEW(qoi->view));
 		gtk_tree_selection_set_mode(qoi->selection, GTK_SELECTION_MULTIPLE);
 		g_signal_connect(G_OBJECT(qoi->selection), "changed", G_CALLBACK(evt_open_quick_selection_changed), qoi);
-
-		gtk_widget_grab_focus(entry);
 	}
+	gtk_editable_select_region(GTK_EDITABLE(qoi->entry), 0, -1);
+	gtk_widget_grab_focus(qoi->entry);
 	if(gtk_dialog_run(GTK_DIALOG(qoi->dialog)) == GTK_RESPONSE_OK)
 	{
 		GList	*selection = gtk_tree_selection_get_selected_rows(qoi->selection, NULL), *iter;
