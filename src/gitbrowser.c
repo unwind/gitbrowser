@@ -39,7 +39,7 @@ PLUGIN_VERSION_CHECK(147)
 
 PLUGIN_SET_INFO("Git Browser",
 		"A minimalistic browser for Git repositories. Implements a 'Quick Open' command to quickly jump to any file in a repository.",
-		"1.0-alpha",
+		"1.0-alpha2",
 		"Emil Brink <emil@obsession.se>")
 
 enum
@@ -67,10 +67,22 @@ enum {
 	NUM_KEYS
 };
 
+enum {
+	QO_NAME = 0,
+	QO_NAME_LOWER,
+	QO_PATH,
+	QO_VISIBLE,
+	QO_NUM_COLUMNS
+} QuickOpenColumns;
+
+/* Data held in the 'names' array of QuickOpenInfo. Faster than storing GString, keeps data
+ * const in the list store, reducing dynamic memory management overhead when reading from it.
+*/
 typedef struct {
 	gpointer		name;
+	gpointer		name_lower;		/* For case-insensitive searching. */
 	gpointer		path;
-} QuickOpenPair;
+} QuickOpenRow;
 
 typedef struct
 {
@@ -558,18 +570,21 @@ static void recurse_repository_to_list(GtkTreeModel *model, GtkTreeIter *iter, g
 		{
 			if(gitbrowser.quick_open_hide == NULL || !g_regex_match(gitbrowser.quick_open_hide, dname, 0, NULL))
 			{
-				gchar		*dpath, *slash;
-				QuickOpenPair	pair;
+				gchar		*dname_lower, *dpath, *slash;
+				QuickOpenRow	row;
 
 				/* Append name and path to the big string buffer, putting "naked" offsets in the pointers. */
-				pair.name = GSIZE_TO_POINTER(string_store(qoi->names, dname));
-				dpath = g_filename_display_name(path);
+				row.name = GSIZE_TO_POINTER(string_store(qoi->names, dname));
+				/* Convert to lower-case, and store that version too, for filtering. */
+				dname_lower = g_utf8_strdown(dname, -1);
+				row.name_lower = GSIZE_TO_POINTER(string_store(qoi->names, dname_lower));
 				/* Remove the last component, which is dname itself, and we don't want it in the Location column. */
+				dpath = g_filename_display_name(path);
 				if((slash = g_utf8_strrchr(dpath, -1, G_DIR_SEPARATOR)) != NULL)
 					*slash = '\0';
-				pair.path = GSIZE_TO_POINTER(string_store(qoi->names, dpath));
+				row.path = GSIZE_TO_POINTER(string_store(qoi->names, dpath));
 				g_free(dpath);
-				g_array_append_val(qoi->array, pair);
+				g_array_append_val(qoi->array, row);
 				qoi->files_total++;
 			}
 		}
@@ -581,11 +596,11 @@ static void recurse_repository_to_list(GtkTreeModel *model, GtkTreeIter *iter, g
 
 static gint cb_array_sort(gconstpointer a, gconstpointer b)
 {
-	const QuickOpenPair	*pa = a, *pb = b;
-	const gint		ret = g_utf8_collate(pa->path, pb->path);
+	const QuickOpenRow	*ra = a, *rb = b;
+	const gint		ret = g_utf8_collate(ra->path, rb->path);
 
 	if(ret == 0)
-		return g_utf8_collate(pa->name, pb->name);
+		return g_utf8_collate(ra->name, rb->name);
 	return ret;
 }
 
@@ -627,23 +642,24 @@ static void repository_to_list(const Repository *repo, GtkTreeModel *model, Quic
 		qoi->files_total = qoi->files_filtered = 0;
 		g_string_truncate(qoi->names, 0);
 		gtk_list_store_clear(qoi->store);
-		qoi->array = g_array_new(FALSE, FALSE, sizeof (QuickOpenPair));
+		qoi->array = g_array_new(FALSE, FALSE, sizeof (QuickOpenRow));
 		recurse_repository_to_list(model, &iter, buf, len, qoi);
-		/* Now we need to fixup. */
+		/* Now we need to fixup; convert stored offsets into actual absolute memory addresses. */
 		for(i = 0; i < qoi->files_total; i++)
 		{
-			QuickOpenPair	*pair = &g_array_index(qoi->array, QuickOpenPair, i);
+			QuickOpenRow	*row = &g_array_index(qoi->array, QuickOpenRow, i);
 
-			pair->name = qoi->names->str + GPOINTER_TO_SIZE(pair->name);
-			pair->path = qoi->names->str + GPOINTER_TO_SIZE(pair->path);
+			row->name = qoi->names->str + GPOINTER_TO_SIZE(row->name);
+			row->name_lower = qoi->names->str + GPOINTER_TO_SIZE(row->name_lower);
+			row->path = qoi->names->str + GPOINTER_TO_SIZE(row->path);
 		}
 		/* Now sort the array, hoping that's faster than sorting a tree model later on. */
 		g_array_sort(qoi->array, cb_array_sort);
 		/* Finally, use the array to populate the list store. */
 		for(i = 0; i < qoi->files_total; i++)
 		{
-			const QuickOpenPair	*pair = &g_array_index(qoi->array, QuickOpenPair, i);
-			gtk_list_store_insert_with_values(qoi->store, &iter, INT_MAX, 0, pair->name, 1, pair->path, 2, TRUE, -1);
+			const QuickOpenRow	*row = &g_array_index(qoi->array, QuickOpenRow, i);
+			gtk_list_store_insert_with_values(qoi->store, &iter, INT_MAX, QO_NAME, row->name, QO_NAME_LOWER, row->name_lower, QO_PATH, row->path, QO_VISIBLE, TRUE, -1);
 		}
 		/* We no longer need the sorting array, so throw it away. */
 		g_array_free(qoi->array, TRUE);
@@ -759,13 +775,13 @@ static gboolean cb_open_quick_filter_idle(gpointer user)
 	tmr = g_timer_new();
 	for(i = 0; g_timer_elapsed(tmr, NULL) < max_time && valid; i++)
 	{
-		gchar		*name;
+		gchar		*name_lower;
 		gboolean	old_visible, new_visible;
 
-		gtk_tree_model_get(GTK_TREE_MODEL(qoi->store), &qoi->filter_iter, 0, &name, 2, &old_visible, -1);
-		new_visible = strstr(name, qoi->filter_text) != NULL;
+		gtk_tree_model_get(GTK_TREE_MODEL(qoi->store), &qoi->filter_iter, QO_NAME_LOWER, &name_lower, QO_VISIBLE, &old_visible, -1);
+		new_visible = strstr(name_lower, qoi->filter_text) != NULL;
 		if(new_visible != old_visible)
-			gtk_list_store_set(GTK_LIST_STORE(qoi->store), &qoi->filter_iter, 2, new_visible, -1);
+			gtk_list_store_set(GTK_LIST_STORE(qoi->store), &qoi->filter_iter, QO_VISIBLE, new_visible, -1);
 		if(!new_visible)
 			qoi->files_filtered++;
 		valid = gtk_tree_model_iter_next(GTK_TREE_MODEL(qoi->store), &qoi->filter_iter);
@@ -789,8 +805,14 @@ static gboolean cb_open_quick_filter_idle(gpointer user)
 static void evt_open_quick_entry_changed(GtkWidget *wid, gpointer user)
 {
 	QuickOpenInfo	*qoi = user;
+	const gchar	*filter = gtk_entry_buffer_get_text(gtk_entry_get_buffer(GTK_ENTRY(wid)));
+	gchar		*filter_lower;
 
-	g_strlcpy(qoi->filter_text, gtk_entry_buffer_get_text(gtk_entry_get_buffer(GTK_ENTRY(wid))), sizeof qoi->filter_text);
+	/* Extract search string, convert to lower-case for filtering. */
+	filter_lower = g_utf8_strdown(filter, -1);
+	g_strlcpy(qoi->filter_text, filter_lower, sizeof qoi->filter_text);
+	g_free(filter_lower);
+
 	if(gtk_tree_model_get_iter_first(GTK_TREE_MODEL(qoi->store), &qoi->filter_iter))
 	{
 		if(qoi->filter_idle == 0)
@@ -840,7 +862,7 @@ static void cdf_open_quick_filename(GtkTreeViewColumn *tree_column, GtkCellRende
 {
 	gchar	*filename;
 
-	gtk_tree_model_get(model, iter, 0, &filename, -1);
+	gtk_tree_model_get(model, iter, QO_NAME, &filename, -1);
 	g_object_set(G_OBJECT(cell), "text", filename, NULL);
 }
 
@@ -848,7 +870,7 @@ static void cdf_open_quick_location(GtkTreeViewColumn *tree_column, GtkCellRende
 {
 	gchar	*location;
 
-	gtk_tree_model_get(model, iter, 1, &location, -1);
+	gtk_tree_model_get(model, iter, QO_PATH, &location, -1);
 	g_object_set(G_OBJECT(cell), "text", location, NULL);
 }
 
@@ -870,7 +892,7 @@ void repository_open_quick(Repository *repo)
 		GtkTreeViewColumn       *vc;
 		gchar			tbuf[64], *name;
 
-		qoi->store = gtk_list_store_new(3, G_TYPE_POINTER, G_TYPE_POINTER, G_TYPE_BOOLEAN);
+		qoi->store = gtk_list_store_new(QO_NUM_COLUMNS, G_TYPE_POINTER, G_TYPE_POINTER, G_TYPE_POINTER, G_TYPE_BOOLEAN);
 		qoi->names = g_string_sized_new(32 << 10);
 		repository_to_list(repo, gitbrowser.model, qoi);
 
@@ -900,7 +922,7 @@ void repository_open_quick(Repository *repo)
 		label = gtk_label_new(_("Select one or more document(s) to open. Type to filter filenames."));
 		gtk_box_pack_start(GTK_BOX(vbox), label, FALSE, FALSE, 0);
 		qoi->filter = gtk_tree_model_filter_new(GTK_TREE_MODEL(qoi->store), NULL);
-		gtk_tree_model_filter_set_visible_column(GTK_TREE_MODEL_FILTER(qoi->filter), 2);	/* Filter on the boolean column. */
+		gtk_tree_model_filter_set_visible_column(GTK_TREE_MODEL_FILTER(qoi->filter), QO_VISIBLE);	/* Filter on the boolean column. */
 		qoi->view = gtk_tree_view_new_with_model(GTK_TREE_MODEL(qoi->filter));
 
 		vc = gtk_tree_view_column_new();
@@ -908,7 +930,6 @@ void repository_open_quick(Repository *repo)
 		title = gtk_label_new(_("Filename"));
 		gtk_widget_show(title);
 		gtk_tree_view_column_set_widget(vc, title);
-		gtk_tree_view_column_set_sort_column_id(vc, 0);
 		gtk_tree_view_append_column(GTK_TREE_VIEW(qoi->view), vc);
 		gtk_tree_view_column_pack_start(vc, cr, TRUE);
 		gtk_tree_view_column_set_cell_data_func(vc, cr, cdf_open_quick_filename, qoi, NULL);
@@ -918,7 +939,6 @@ void repository_open_quick(Repository *repo)
 		title = gtk_label_new(_("Location"));
 		gtk_widget_show(title);
 		gtk_tree_view_column_set_widget(vc, title);
-		gtk_tree_view_column_set_sort_column_id(vc, 1);
 		gtk_tree_view_append_column(GTK_TREE_VIEW(qoi->view), vc);
 		gtk_tree_view_column_pack_start(vc, cr, TRUE);
 		gtk_tree_view_column_set_cell_data_func(vc, cr, cdf_open_quick_location, qoi, NULL);
@@ -965,7 +985,7 @@ void repository_open_quick(Repository *repo)
 					gchar	buf[2048], *dpath, *dname, *fn;
 					gint	len;
 
-					gtk_tree_model_get(GTK_TREE_MODEL(qoi->store), &here, 0, &dname, 1, &dpath, -1);
+					gtk_tree_model_get(GTK_TREE_MODEL(qoi->store), &here, QO_NAME, &dname, QO_PATH, &dpath, -1);
 					if((len = g_snprintf(buf, sizeof buf, "%s%s%s", dpath, G_DIR_SEPARATOR_S, dname)) < sizeof buf)
 					{
 						if((fn = g_filename_from_utf8(buf, (gssize) len, NULL, NULL, NULL)) != NULL)
