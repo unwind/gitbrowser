@@ -1,7 +1,7 @@
 
 Gitbrowser
 ===========
-Gitbrowser (or "Git Browser") is a plugin for the [Geany](http://geany.org/) lightweight IDE. It implements a simple, read-only, static tree view that shows a collection of [Git](http://git-scm.com/) repositories.
+Gitbrowser (or "Git Browser") is a plugin for the [Geany](http://geany.org/) lightweight IDE. It implements a simple, read-only, static tree view that shows a collection of [Git](http://git-scm.com/) repositories and all their files.
 
 Gitbrowser does *not* aim to be a complete "solution" for working with Git repositories; all it does is import the list of files, present it visually in a tree, and allow you to quickly jump to a given file.
 
