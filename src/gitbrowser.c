@@ -39,7 +39,7 @@ PLUGIN_VERSION_CHECK(147)
 
 PLUGIN_SET_INFO("Git Browser",
 		"A minimalistic browser for Git repositories. Implements a 'Quick Open' command to quickly jump to any file in a repository.",
-		"1.0-alpha2",
+		"1.0-alpha3",
 		"Emil Brink <emil@obsession.se>")
 
 enum
@@ -92,11 +92,12 @@ typedef struct
 	GtkWidget		*spinner;
 	GtkWidget		*label;
 	GtkTreeSelection	*selection;
-	GtkListStore		*store;			/* Only pointers in here. */
 	gsize			files_total;
 	gsize			files_filtered;
-	GString			*names;			/* All the names! */
-	GArray			*array;			/* Used during construction. */
+	GtkListStore		*store;			/* Only pointers into 'names' in here. */
+	GString			*names;			/* All names (files and paths), concatenated with '\0's in-between. */
+	GHashTable		*dedup;			/* Used during construction to de-duplicate names. Saves tons of memory. */
+	GArray			*array;			/* Used during construction to sort quickly. */
 	GtkTreeModel		*filter;
 	gchar			filter_text[128];	/* Cached so we don't need to query GtkEntry on each filter callback. */
 	guint			filter_idle;
@@ -529,14 +530,21 @@ Repository * repository_find_by_path(const gchar *path)
 	return NULL;
 }
 
-static gsize string_store(GString *string, const gchar *text)
+static guint string_store(QuickOpenInfo *qoi, const gchar *text)
 {
-	gsize	pos = string->len + 1;
+	gpointer	offset = g_hash_table_lookup(qoi->dedup, text);
 
-	g_string_append_c(string, '\0');	/* Terminate previous name. */
-	g_string_append(string, text);
+	/* The first name is stored starting at 1, which makes NULL really represent "unknown name". */
+	if(offset == NULL)
+	{
+		offset = GUINT_TO_POINTER(qoi->names->len + 1);
 
-	return pos;
+		g_string_append_c(qoi->names, '\0');	/* Terminate previous name. */
+		g_string_append(qoi->names, text);
+		/* Remember the offset at which this name starts, for de-duplicating. */
+		g_hash_table_insert(qoi->dedup, (gpointer) text, offset);
+	}
+	return GPOINTER_TO_UINT(offset);
 }
 
 static void recurse_repository_to_list(GtkTreeModel *model, GtkTreeIter *iter, gchar *path, gsize path_length, QuickOpenInfo *qoi)
@@ -574,15 +582,15 @@ static void recurse_repository_to_list(GtkTreeModel *model, GtkTreeIter *iter, g
 				QuickOpenRow	row;
 
 				/* Append name and path to the big string buffer, putting "naked" offsets in the pointers. */
-				row.name = GSIZE_TO_POINTER(string_store(qoi->names, dname));
+				row.name = GSIZE_TO_POINTER(string_store(qoi, dname));
 				/* Convert to lower-case, and store that version too, for filtering. */
 				dname_lower = g_utf8_strdown(dname, -1);
-				row.name_lower = GSIZE_TO_POINTER(string_store(qoi->names, dname_lower));
+				row.name_lower = GSIZE_TO_POINTER(string_store(qoi, dname_lower));
 				/* Remove the last component, which is dname itself, and we don't want it in the Location column. */
 				dpath = g_filename_display_name(path);
 				if((slash = g_utf8_strrchr(dpath, -1, G_DIR_SEPARATOR)) != NULL)
 					*slash = '\0';
-				row.path = GSIZE_TO_POINTER(string_store(qoi->names, dpath));
+				row.path = GSIZE_TO_POINTER(string_store(qoi, dpath));
 				g_free(dpath);
 				g_array_append_val(qoi->array, row);
 				qoi->files_total++;
@@ -642,6 +650,7 @@ static void repository_to_list(const Repository *repo, GtkTreeModel *model, Quic
 		qoi->files_total = qoi->files_filtered = 0;
 		g_string_truncate(qoi->names, 0);
 		gtk_list_store_clear(qoi->store);
+		qoi->dedup = g_hash_table_new(g_str_hash, g_str_equal);
 		qoi->array = g_array_new(FALSE, FALSE, sizeof (QuickOpenRow));
 		recurse_repository_to_list(model, &iter, buf, len, qoi);
 		/* Now we need to fixup; convert stored offsets into actual absolute memory addresses. */
@@ -663,6 +672,7 @@ static void repository_to_list(const Repository *repo, GtkTreeModel *model, Quic
 		}
 		/* We no longer need the sorting array, so throw it away. */
 		g_array_free(qoi->array, TRUE);
+		g_hash_table_destroy(qoi->dedup);
 		g_timer_destroy(tmr);
 	}
 }
