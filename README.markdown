@@ -1,11 +1,12 @@
-
 Gitbrowser
 ===========
 Gitbrowser (or "Git Browser") is a plugin for the [Geany](http://geany.org/) lightweight IDE. It implements a simple, read-only, static tree view that shows a collection of [Git](http://git-scm.com/) repositories and all their files.
 
 Gitbrowser does *not* aim to be a complete "solution" for working with Git repositories; all it does is import the list of files, present it visually in a tree, and allow you to quickly jump to a given file.
 
-I wrote it simply to "scratch an itch", I want something like this when working on my projects, but being quite new to Git I prefer to use it manually at a "low level", directly from the command line. Having a the plugin speeds up actual software development for me, since I can quickly jump between files and do edits.
+Gitbrowser is based on the idea that since you already work with one system (Git) to define the set of files that is important for a particular project, it makes sense to be able to re-use *that set* in your editing environment. Maintaining a separate "project" file with more meta information seems to violate the [DRY](http://en.wikipedia.org/wiki/Don%27t_repeat_yourself) principle.
+
+I wrote it simply to [scratch the proverbial itch](http://www.neilgunton.com/doc/open_source_myths#185364); I want something like this when working on my projects, but being quite new to Git I prefer to use it manually at a "low level", directly from the command line. Having a the plugin speeds up actual software development for me, since I can quickly jump between files and do edits. This is why Gitbrowser doesn't implement any actual Git operations.
 
 ##Installation##
 At the moment, Gitbrowser is not available in any pre-packaged form, so you need to build it yourself. Luckily, that isn't too hard. The following steps should do it:
@@ -44,7 +45,7 @@ When you add a repository, Gitbrowser will log a message to Geany's general Stat
 
 As you can see, adding a repository is quite fast, even for very large repositories like the Linux kernel (your milage might vary, this is of course machine-dependent).
 
-The Gitbrowser's tree view will include *all* files that are part of a repository, regardless of type or extension. This is perhaps slighly pointless (you currently can't do anything with files that Geany can't open for editing), but it's also simple and does a lot to reinforce the idea that Gitbrowser simply lets you visualize your repositories as trees.
+Gitbrowser's tree view will include *all* files that are part of each repository, regardless of type or extension. This is perhaps slighly pointless (you currently can't do anything with files that Geany can't open for editing), but it's also simple and does a lot to reinforce the idea that Gitbrowser simply lets you visualize your repositories as trees.
 
 
 ##Repository Commands##
