@@ -90,13 +90,17 @@ If you right-click on a directory inside a repository, you will see this menu:
 
 ![Directory Menu](https://github.com/unwind/gitbrowser/raw/master/doc/screenshots/dir-menu.png "Directory Menu")
 
-These two obviously-named commands simply let you expand or collapse the directory. Currently, Gitbrowser does not save the expand/collapse state of the included repositories' files.
+The first two obviously-named commands simply let you expand or collapse the directory. Currently, Gitbrowser does not save the expand/collapse state of the included repositories' directories. The third command opens the directory containing the directory you clicked in the system's default application. For many current Linux desktop systems, this means the default file browser (Nautilus) will open.
 
-Right-clicking on an actual file gives you this even more minimalistic menu:
+Right-clicking on an actual file gives you this menu:
 
 ![File Menu](https://github.com/unwind/gitbrowser/raw/master/doc/screenshots/file-menu.png "File Menu")
 
-All you can do is make Gitbrowser attempt to open the file, which will simply open it in Geany.
+The first choice is the most typical operation, which makes Gitbrowser attempt to open the file, which will simply open it in Geany if successful.
+
+The second choice lets you copy the full name, including the physical path on your local computer, of the right-clicked file to the system's clipboard. This can be useful if you want to e.g. run shell commands involving this file, include it in documentation, and so on.
+
+The third choice opens the directory containing the file you clicked with the system's default application for opening directories.
 
 
 ##Configuring Gitbrowser##

@@ -58,6 +58,8 @@ enum
 	CMD_DIR_COLLAPSE,
 
 	CMD_FILE_OPEN,
+	CMD_FILE_COPY_NAME,
+	CMD_FILE_EXPLORE,
 
 	NUM_COMMANDS
 };
@@ -391,6 +393,45 @@ static void cmd_file_open(GtkAction *action, gpointer user)
 	tree_model_open_document(gitbrowser.model, gitbrowser.click_path);
 }
 
+static void cmd_file_copy_name(GtkAction *action, gpointer user)
+{
+	GtkTreeIter	iter;
+
+	CMD_INIT("file-copy-name", _("Copy Name"), _("Copies the full name (with path) of this file to the clipboard."), NULL);
+
+	if(gtk_tree_model_get_iter(gitbrowser.model, &iter, gitbrowser.click_path))
+	{
+		char		buf[1024];
+		GtkClipboard	*cb;
+
+		tree_model_get_document_path(gitbrowser.model, &iter, buf, sizeof buf);
+		if((cb = gtk_clipboard_get(GDK_SELECTION_PRIMARY)) != NULL)
+		{
+			gtk_clipboard_set_text(cb, buf, -1);
+		}
+	}
+}
+
+static void cmd_file_explore(GtkAction *action, gpointer user)
+{
+	GtkTreeIter	iter;
+
+	CMD_INIT("file-explore", _("Explore ..."), _("Opens the directory containing this item, using the system's default file browser."), NULL);
+
+	if(gtk_tree_model_get_iter(gitbrowser.model, &iter, gitbrowser.click_path))
+	{
+		char	buf[1024] = "file://", *rear;
+
+		tree_model_get_document_path(gitbrowser.model, &iter, buf + 7, (sizeof buf) - 7);
+		if(buf[0] != '\0')
+		{
+			if((rear = strrchr(buf, G_DIR_SEPARATOR)) != NULL)
+				*rear = '\0';
+			gtk_show_uri(NULL, buf, GDK_CURRENT_TIME, NULL);
+		}
+	}
+}
+
 void init_commands(GtkAction **actions, GtkWidget **menu_items)
 {
 	typedef void (*ActivateOrCreate)(GtkAction *action, gpointer user);
@@ -407,6 +448,8 @@ void init_commands(GtkAction **actions, GtkWidget **menu_items)
 		cmd_dir_expand,
 		cmd_dir_collapse,
 		cmd_file_open,
+		cmd_file_copy_name,
+		cmd_file_explore,
 	};
 	size_t	i;
 
@@ -1219,33 +1262,30 @@ gboolean tree_model_open_document(GtkTreeModel *model, GtkTreePath *path)
 /* Gets the full path, in the local system's encoding, for the indicated document. Returns FALSE if given an inner node. */
 gboolean tree_model_get_document_path(GtkTreeModel *model, const GtkTreeIter *iter, gchar *buf, gsize buf_max)
 {
-	if(!gtk_tree_model_iter_has_child(model, (GtkTreeIter *) iter))
+	const gboolean	inner = gtk_tree_model_iter_has_child(model, (GtkTreeIter *) iter);
+	GString		*path = g_string_sized_new(1024);
+	GtkTreeIter	here = *iter, child;
+
+	/* Walk towards the root, building the filename as we go. */
+	do
 	{
-		GString		*path = g_string_sized_new(1024);
-		GtkTreeIter	here = *iter, child;
-		gboolean	ok;
+		gchar	*component = NULL;
 
-		/* Walk towards the root, building the filename as we go. */
-		do
+		gtk_tree_model_get(model, &here, 1, &component, -1);
+		if(component != NULL)
 		{
-			gchar	*component = NULL;
+			if(path->len > 0)
+				g_string_prepend(path, G_DIR_SEPARATOR_S);
+			g_string_prepend(path, component);
+			g_free(component);
+		}
+		child = here;
+	} while(gtk_tree_model_iter_parent(model, &here, &child));
+	if(g_strlcpy(buf, path->str, buf_max) >= buf_max)
+		*buf = '\0';
+	g_string_free(path, TRUE);
 
-			gtk_tree_model_get(model, &here, 1, &component, -1);
-			if(component != NULL)
-			{
-				if(path->len > 0)
-					g_string_prepend(path, G_DIR_SEPARATOR_S);
-				g_string_prepend(path, component);
-				g_free(component);
-			}
-			child = here;
-		} while(gtk_tree_model_iter_parent(model, &here, &child));
-		ok = g_strlcpy(buf, path->str, buf_max) < buf_max;
-		g_string_free(path, TRUE);
-
-		return ok;
-	}
-	return FALSE;
+	return inner;
 }
 
 void tree_model_foreach(GtkTreeModel *model, GtkTreeIter *root, void (*node_callback)(GtkTreeModel *model, GtkTreePath *path, GtkTreeIter *iter, gpointer user), gpointer user)
@@ -1338,7 +1378,9 @@ static void menu_popup_directory(GdkEventButton *evt)
 
 	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.action_menu_items[CMD_DIR_EXPAND]);
 	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.action_menu_items[CMD_DIR_COLLAPSE]);
-
+	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_separator_menu_item_new());
+	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.action_menu_items[CMD_FILE_EXPLORE]);
+	gtk_widget_show_all(menu);
 	gtk_menu_popup(GTK_MENU(menu), NULL, NULL, NULL, NULL, evt->button, evt->time);
 }
 
@@ -1347,7 +1389,10 @@ static void menu_popup_file(GdkEventButton *evt)
 	GtkWidget	*menu = menu_popup_create();
 
 	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.action_menu_items[CMD_FILE_OPEN]);
-
+	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_separator_menu_item_new());
+	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.action_menu_items[CMD_FILE_COPY_NAME]);
+	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.action_menu_items[CMD_FILE_EXPLORE]);
+	gtk_widget_show_all(menu);
 	gtk_menu_popup(GTK_MENU(menu), NULL, NULL, NULL, NULL, evt->button, evt->time);
 }
 
