@@ -955,7 +955,7 @@ void repository_open_quick(Repository *repo)
 			name = repo->root_path;
 		g_snprintf(tbuf, sizeof tbuf, _("Quick Open in Git Repository \"%s\""), name);
 
-		qoi->dialog = gtk_dialog_new_with_buttons(tbuf, NULL, GTK_DIALOG_MODAL, GTK_STOCK_OK, GTK_RESPONSE_OK, GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL, NULL);
+		qoi->dialog = gtk_dialog_new_with_buttons(tbuf, NULL, GTK_DIALOG_MODAL, GTK_STOCK_OPEN, GTK_RESPONSE_OK, GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL, NULL);
 		gtk_dialog_set_default_response(GTK_DIALOG(qoi->dialog), GTK_RESPONSE_OK);
 		gtk_window_set_default_size(GTK_WINDOW(qoi->dialog), 600, 600);
 
