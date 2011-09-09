@@ -6,7 +6,7 @@ Gitbrowser does *not* aim to be a complete "solution" for working with Git repos
 
 Gitbrowser is based on the idea that since you already work with one system (Git) to define the set of files that is important for a particular project, it makes sense to be able to re-use *that set* in your editing environment. Maintaining a separate "project" file with more meta information seems to violate the [DRY](http://en.wikipedia.org/wiki/Don%27t_repeat_yourself) principle.
 
-I wrote it simply to [scratch the proverbial itch](http://www.neilgunton.com/doc/open_source_myths#185364); I want something like this when working on my projects, but being quite new to Git I prefer to use it manually at a "low level", directly from the command line. Having a the plugin speeds up actual software development for me, since I can quickly jump between files and do edits. This is why Gitbrowser doesn't implement any actual Git operations.
+I wrote it simply to [scratch the proverbial itch](http://www.neilgunton.com/doc/open_source_myths#185364); I want something like this when working on my projects, but being quite new to Git I prefer to use it manually at a "low level", directly from the command line. This is why Gitbrowser doesn't implement any actual Git operations. Having the plugin speeds up actual software development for me, since I can quickly jump between files and do edits. 
 
 ##Installation##
 At the moment, Gitbrowser is not available in any pre-packaged form, so you need to build it yourself. Luckily, that isn't too hard. The following steps should do it:
@@ -64,7 +64,7 @@ The Quick Open dialog looks like this:
 
 Once opened, Quick Open lets you use the arrow keys to navigate the big list of files contained in the repository, or type to filter (in "real-time") the list of files. This allows very quick navigation to a file once you know a few characters of its filename. Since many source code projects use regular naming schemes for its files, you can often cut down the number of files visible very quickly, and thus "home in" on the file you are interested in.
 
-Note that the filtering is done by literal sub-string, the text you type in is not a regular expression or any other form of abstract pattern. The filtering is, however, case-insensitive, so you can type just `make` to show all `Makefiles` in a project, for instance. This makes access as fast as possible, as typing lower-case characters is typically quicker.
+Note that the filtering is done by literal sub-string, the text you type is not interpreted as a regular expression or any other form of abstract pattern. The filtering is, however, case-insensitive, so you can type just `make` to show all `Makefiles` in a project, for instance. This makes access as fast as possible, since typing lower-case characters is typically quicker.
 
 The label at the bottom shows how many files are displayed, and if filtering is active it also shows how many files have been hidden by it. You can select multiple files in the list, Gitbrowser will open them all.
 
