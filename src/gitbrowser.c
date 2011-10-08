@@ -826,7 +826,7 @@ static gboolean cb_open_quick_filter_idle(gpointer user)
 	const gdouble	max_time = 1e-3 * gitbrowser.quick_open_filter_max_time;
 
 	tmr = g_timer_new();
-	for(i = 0; g_timer_elapsed(tmr, NULL) < max_time && valid; i++)
+	for(i = 0; valid && g_timer_elapsed(tmr, NULL) < max_time; i++)
 	{
 		gchar		*name_lower;
 		gboolean	old_visible, new_visible;
