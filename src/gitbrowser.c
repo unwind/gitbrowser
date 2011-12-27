@@ -1498,14 +1498,15 @@ static void open_quick_reset_filter(void)
 
 /* -------------------------------------------------------------------------------------------------------------- */
 
-static void cb_key_group_callback(guint key_id)
+static gboolean cb_key_group_callback(guint key_id)
 {
 	switch(key_id)
 	{
 	case KEY_REPOSITORY_OPEN_QUICK_FROM_DOCUMENT:
 		gtk_action_activate(gitbrowser.actions[CMD_REPOSITORY_OPEN_QUICK_FROM_DOCUMENT]);
-		break;
+		return TRUE;
 	}
+	return FALSE;
 }
 
 void plugin_init(GeanyData *geany_data)
@@ -1521,8 +1522,8 @@ void plugin_init(GeanyData *geany_data)
 	gitbrowser.quick_open_filter_max_time = 50;
 	gitbrowser.quick_open_hide = NULL;
 
-	gitbrowser.key_group = plugin_set_key_group(geany_plugin, MNEMONIC_NAME, NUM_KEYS, NULL);
-	keybindings_set_item(gitbrowser.key_group, KEY_REPOSITORY_OPEN_QUICK_FROM_DOCUMENT, cb_key_group_callback, GDK_KEY_O, GDK_SHIFT_MASK | GDK_CONTROL_MASK, "repository-open-quick-from-document", _("Quick Open from Document"), gitbrowser.action_menu_items[CMD_REPOSITORY_OPEN_QUICK_FROM_DOCUMENT]);
+	gitbrowser.key_group = plugin_set_key_group(geany_plugin, MNEMONIC_NAME, NUM_KEYS, cb_key_group_callback);
+	keybindings_set_item(gitbrowser.key_group, KEY_REPOSITORY_OPEN_QUICK_FROM_DOCUMENT, NULL, GDK_KEY_o, GDK_MOD1_MASK | GDK_SHIFT_MASK, "repository-open-quick-from-document", _("Quick Open from Document"), gitbrowser.action_menu_items[CMD_REPOSITORY_OPEN_QUICK_FROM_DOCUMENT]);
 
 	dir = g_strconcat(geany->app->configdir, G_DIR_SEPARATOR_S, "plugins", G_DIR_SEPARATOR_S, MNEMONIC_NAME, NULL);
 	utils_mkdir(dir, TRUE);
