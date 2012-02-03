@@ -94,8 +94,8 @@ typedef struct
 	GtkWidget		*spinner;
 	GtkWidget		*label;
 	GtkTreeSelection	*selection;
-	gsize			files_total;
-	gsize			files_filtered;
+	gulong			files_total;
+	gulong			files_filtered;
 	GtkListStore		*store;			/* Only pointers into 'names' in here. */
 	GString			*names;			/* All names (files and paths), concatenated with '\0's in-between. */
 	GHashTable		*dedup;			/* Used during construction to de-duplicate names. Saves tons of memory. */
@@ -156,7 +156,7 @@ void		tree_model_foreach(GtkTreeModel *model, GtkTreeIter *root, void (*node_cal
 
 /* -------------------------------------------------------------------------------------------------------------- */
 
-/* Trickery to make the same function work both as the signal-handler, and for creating the actual GtkAction. Too weird? */
+/* Trickery to make a single function both register/create an action, and implement that action's action. */
 #define	CMD_INIT(n, l, tt, s)	if(action == NULL) { GtkAction **me = (GtkAction **) user; *me = gtk_action_new(n, _(l), _(tt), s); return; }
 
 static void cmd_repository_add(GtkAction *action, gpointer user)
@@ -478,7 +478,7 @@ gboolean subprocess_run(const gchar* working_dir, gchar **argv, gchar **env, gch
 */
 const gchar * tok_tokenize_next_line(const gchar *lines, gchar *buffer, size_t buf_size)
 {
-	if(lines == NULL || *lines == '\0' || buffer == NULL)
+	if(lines == NULL || *lines == '\0' || buffer == NULL || buf_size < 2)
 		return NULL;
 	/* Copy characters until linefeed. Don't overflow. */
 	buf_size--;
@@ -807,7 +807,7 @@ static void evt_open_quick_view_row_activated(GtkWidget *view, GtkTreePath *path
 
 static void open_quick_update_label(QuickOpenInfo *qoi)
 {
-	gchar	buf[32];
+	gchar	buf[64];
 
 	if(qoi->files_filtered == 0)
 		g_snprintf(buf, sizeof buf, _("Showing all %lu files."), qoi->files_total);
@@ -893,6 +893,8 @@ static gboolean evt_open_quick_entry_key_press(GtkWidget *wid, GdkEventKey *evt,
 		/* This is, unfortunately, something of a hack: to make cursor up/down keys
 		 * in the entry affect the selection in the tree view, we copy the event,
 		 * poke the window member, and re-emit it. The best thing is that it works.
+		 *
+		 * FIXME: There should be a better way of implementing this. Find it.
 		*/
 		if(evt->keyval == GDK_KEY_Up || evt->keyval == GDK_KEY_Down ||
 		   evt->keyval == GDK_KEY_Page_Up || evt->keyval == GDK_KEY_Page_Down)
@@ -1490,7 +1492,10 @@ static void open_quick_reset_filter(void)
 			Repository	*repo = iter->data;
 
 			if(repo->quick_open.dialog != NULL)
+			{
 				repository_to_list(repo, gitbrowser.model, &repo->quick_open);
+				open_quick_update_label(&repo->quick_open);
+			}
 		}
 		g_list_free(repos);
 	}
