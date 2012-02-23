@@ -2,7 +2,7 @@
 # Top-level Makefile for the gitbrowser Geany plugin. Not much to see, here.
 #
 
-.PHONY:	clean
+.PHONY:	clean install install-dev
 
 # --------------------------------------------------------------
 
@@ -13,3 +13,9 @@ all:
 
 clean:
 	$(MAKE) -C src clean
+
+install:
+	$(MAKE) -C src install
+
+install-dev:
+	$(MAKE) -C src install-dev

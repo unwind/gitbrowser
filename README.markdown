@@ -14,11 +14,8 @@ At the moment, Gitbrowser is not available in any pre-packaged form, so you need
 1. Grab the code (`git clone git://github.com/unwind/gitbrowser.git`)
 2. Using a terminal, enter the top-level `gitbrowser/` directory
 3. Type `make`
-4. Type `sudo ln -s $(pwd)/src/gitbrowser.so $(dirname $(dirname $(which geany)))/lib/geany`
-
-The final step is the most complicated; the purpose is to create a symbolic link from Geany's system-wide plugin directory to the library you just built. This assumes that you will want to keep the plugin in the source directory; if you rather would install it permanently you can move it to the indicated location instead, and then delete the source code.
-
-Keeping a symbolic link will of course make it easier to update the plugin if there are any changes (or if you do changes yourself).
+4. There are two options here. If you just want to *use* the version of Gitbrowser you just built, and not keep updating it if the source changes, type `sudo make install`. If you want to keep the source (for updates, hacking, whatever), type `sudo make install-dev`.
+5. If you went with the `make install` option, you can now delete the directory holding the source code.
 
 
 ##The Browser###
