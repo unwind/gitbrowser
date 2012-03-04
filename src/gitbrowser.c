@@ -1,7 +1,7 @@
 /*
  * gitbrowser - A geany plugin to work with Git repositories.
  *
- * Copyright (C) 2011 by Emil Brink <emil@obsession.se>.
+ * Copyright (C) 2011-2012 by Emil Brink <emil@obsession.se>.
  *
  * This file is part of gitbrowser.
  *
