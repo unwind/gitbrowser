@@ -1,0 +1,4 @@
+# A very few basic ignores.
+
+*.o
+*.so
