@@ -374,14 +374,14 @@ static void cmd_repository_move_down(GtkAction *action, gpointer user)
 
 static void cmd_dir_expand(GtkAction *action, gpointer user)
 {
-	CMD_INIT("dir-expand", _("Expand"), _("Expands a directory node."), NULL);
+	CMD_INIT("dir-expand", _("Expand All"), _("Expands a directory node."), GTK_STOCK_GO_FORWARD);
 
 	gtk_tree_view_expand_row(GTK_TREE_VIEW(gitbrowser.view), gitbrowser.click_path, TRUE);
 }
 
 static void cmd_dir_collapse(GtkAction *action, gpointer user)
 {
-	CMD_INIT("dir-collapse", _("Collapse"), _("Collapses a directory node."), NULL);
+	CMD_INIT("dir-collapse", _("Collapse All"), _("Collapses a directory node."), GTK_STOCK_GO_BACK);
 
 	gtk_tree_view_collapse_row(GTK_TREE_VIEW(gitbrowser.view), gitbrowser.click_path);
 }
