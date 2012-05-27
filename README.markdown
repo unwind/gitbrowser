@@ -88,7 +88,7 @@ If you right-click on a directory inside a repository, you will see this menu:
 ![Directory Menu](https://github.com/unwind/gitbrowser/raw/master/doc/screenshots/dir-menu.png "Directory Menu")
 
 The first two obviously-named commands simply let you expand or collapse the directory. Gitbrowser saves the expanded/collapsed state of the included
-repositories' directories when you quit Geany, and loads them back in when the restarted. The third command opens the directory containing the directory you clicked in the system's default application. For many current Linux desktop systems, this means the default file browser (Nautilus) will open.
+repositories' directories when you quit Geany, and loads them back in when restarted. The third command opens the directory containing the directory you clicked in the system's default application. For many current Linux desktop systems, this means the default file browser (Nautilus) will open.
 
 Right-clicking on an actual file gives you this menu:
 
