@@ -27,6 +27,7 @@
 
 #define	MNEMONIC_NAME			"gitbrowser"
 #define	CFG_REPOSITORIES		"repositories"
+#define	CFG_EXPANDED			"expanded"
 #define	CFG_QUICK_OPEN_FILTER_MAX_TIME	"quick_open_filter_max_time"
 #define	CFG_QUICK_OPEN_HIDE_SRC		"quick_open_hide_re"
 #define	PATH_SEPARATOR_CHAR		':'
@@ -153,6 +154,9 @@ void		tree_model_build_repository(GtkTreeModel *model, GtkTreeIter *root, const 
 gboolean	tree_model_open_document(GtkTreeModel *model, GtkTreePath *path);
 gboolean	tree_model_get_document_path(GtkTreeModel *model, const GtkTreeIter *iter, gchar *buf, gsize buf_max);
 void		tree_model_foreach(GtkTreeModel *model, GtkTreeIter *root, void (*node_callback)(GtkTreeModel *model, GtkTreePath *path, GtkTreeIter *iter, gpointer user), gpointer user);
+
+GString *	tree_view_get_expanded(GtkTreeView *view);
+void		tree_view_set_expanded(GtkTreeView *view, const gchar *paths);
 
 /* -------------------------------------------------------------------------------------------------------------- */
 
@@ -749,8 +753,16 @@ void repository_save_all(GtkTreeModel *model)
 
 	if(repos != NULL)
 	{
+		GString	*exp = tree_view_get_expanded(GTK_TREE_VIEW(gitbrowser.view));
+
 		g_key_file_set_string(out, MNEMONIC_NAME, CFG_REPOSITORIES, repos->str);
 		g_string_free(repos, TRUE);
+		if(exp != NULL)
+		{
+			if(exp->len > 0)
+				g_key_file_set_string(out, MNEMONIC_NAME, CFG_EXPANDED, exp->str);
+			g_string_free(exp, TRUE);
+		}
 	}
 	stash_group_save_to_key_file(gitbrowser.prefs, out);
 
@@ -776,6 +788,7 @@ void repository_load_all(void)
 			gchar	separator[] = { PATH_SEPARATOR_CHAR, '\0' };
 			gchar	**repo_vector = g_strsplit(str, separator, 0);
 			gsize	i;
+			gchar	*exp;
 
 			for(i = 0; repo_vector[i] != NULL; i++)
 			{
@@ -783,6 +796,10 @@ void repository_load_all(void)
 				tree_model_build_repository(gitbrowser.model, NULL, repo->root_path);
 			}
 			g_free(str);
+			exp = g_key_file_get_string(in, MNEMONIC_NAME, CFG_EXPANDED, NULL);
+			/* Note: Both of these calls do the right thing even if exp == NULL. */
+			tree_view_set_expanded(GTK_TREE_VIEW(gitbrowser.view), exp);
+			g_free(exp);
 		}
 	}
 	stash_group_load_from_key_file(gitbrowser.prefs, in);
@@ -1283,6 +1300,7 @@ gboolean tree_model_get_document_path(GtkTreeModel *model, const GtkTreeIter *it
 		}
 		child = here;
 	} while(gtk_tree_model_iter_parent(model, &here, &child));
+
 	if(g_strlcpy(buf, path->str, buf_max) >= buf_max)
 		*buf = '\0';
 	g_string_free(path, TRUE);
@@ -1471,6 +1489,73 @@ GtkWidget * tree_view_new(GtkTreeModel *model)
 	return view;
 }
 
+struct expansion_state {
+	GtkTreeView	*view;
+	GString		*expanded;
+};
+
+/* Check the expansion state of given tree node, and append its path to huge string, if it's expanded. */
+static gboolean cb_check_expansion(GtkTreeModel *model, GtkTreePath *path, GtkTreeIter *iter, gpointer user)
+{
+	struct expansion_state	*state = user;
+	const gint		*indices = gtk_tree_path_get_indices(path);
+	const gint		depth = gtk_tree_path_get_depth(path);
+	gint			i;
+
+	if(!gtk_tree_model_iter_has_child(model, iter))
+		return FALSE;
+	if(!gtk_tree_view_row_expanded(state->view, path))
+		return FALSE;
+
+	if(state->expanded->len > 0)
+		g_string_append_c(state->expanded, ',');
+
+	for(i = 0; i < depth; i++)
+	{
+		if(i > 0)
+			g_string_append_c(state->expanded, ':');
+		g_string_append_printf(state->expanded, "%d", indices[i]);
+	}
+	return FALSE;
+}
+
+GString * tree_view_get_expanded(GtkTreeView *view)
+{
+	struct expansion_state	state;
+
+	state.view = view;
+	state.expanded = g_string_sized_new(256);
+	/* Traverse the entire repository tree, and note which nodes are expanded. */
+	gtk_tree_model_foreach(gtk_tree_view_get_model(view), cb_check_expansion, &state);
+
+	return state.expanded;
+}
+
+void tree_view_set_expanded(GtkTreeView *view, const gchar *paths)
+{
+	gchar	**tokens;
+
+	gtk_tree_view_collapse_all(view);
+	if(paths == NULL || *paths == '\0')	/* If told to expand nothing, don't. */
+		return;
+
+	if((tokens = g_strsplit(paths, ",", -1)) != NULL)
+	{
+		gint	i;
+
+		for(i = 0; tokens[i] != NULL; i++)
+		{
+			GtkTreePath	*path;
+
+			if((path = gtk_tree_path_new_from_string(tokens[i])) != NULL)
+			{
+				gtk_tree_view_expand_row(view, path, FALSE);
+			}
+		}
+		g_free(tokens);
+	}
+}
+
 /* -------------------------------------------------------------------------------------------------------------- */
 
 static void open_quick_reset_filter(void)
@@ -1595,8 +1680,8 @@ GtkWidget * plugin_configure(GtkDialog *dlg)
 
 void plugin_cleanup(void)
 {
-	gtk_notebook_remove_page(GTK_NOTEBOOK(geany->main_widgets->sidebar_notebook), gitbrowser.page);
 	repository_save_all(gitbrowser.model);
+	gtk_notebook_remove_page(GTK_NOTEBOOK(geany->main_widgets->sidebar_notebook), gitbrowser.page);
 	stash_group_free(gitbrowser.prefs);
 	g_free(gitbrowser.config_filename);
 	g_hash_table_destroy(gitbrowser.repositories);
