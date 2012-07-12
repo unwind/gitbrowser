@@ -31,6 +31,7 @@
 #define	CFG_QUICK_OPEN_FILTER_MAX_TIME	"quick_open_filter_max_time"
 #define	CFG_QUICK_OPEN_HIDE_SRC		"quick_open_hide_re"
 #define	PATH_SEPARATOR_CHAR		':'
+#define	REPO_IS_SEPARATOR		"-"
 
 GeanyPlugin         *geany_plugin;
 GeanyData           *geany_data;
@@ -47,6 +48,8 @@ enum
 {
 	CMD_REPOSITORY_ADD = 0,
 	CMD_REPOSITORY_ADD_FROM_DOCUMENT,
+	CMD_REPOSITORY_ADD_SEPARATOR,
+
 	CMD_REPOSITORY_REMOVE,
 	CMD_REPOSITORY_REMOVE_ALL,
 	CMD_REPOSITORY_OPEN_QUICK,
@@ -98,7 +101,7 @@ typedef struct
 	gulong			files_total;
 	gulong			files_filtered;
 	GtkListStore		*store;			/* Only pointers into 'names' in here. */
-	GString			*names;			/* All names (files and paths), concatenated with '\0's in-between. */
+	GString		*names;			/* All names (files and paths), concatenated with '\0's in-between. */
 	GHashTable		*dedup;			/* Used during construction to de-duplicate names. Saves tons of memory. */
 	GArray			*array;			/* Used during construction to sort quickly. */
 	GtkTreeModel		*filter;
@@ -151,12 +154,15 @@ static void	open_quick_reset_filter(void);
 
 gboolean	tree_model_find_repository(GtkTreeModel *model, const gchar *root_path, GtkTreeIter *iter);
 void		tree_model_build_repository(GtkTreeModel *model, GtkTreeIter *root, const gchar *root_path);
+void		tree_model_build_separator(GtkTreeModel *model);
 gboolean	tree_model_open_document(GtkTreeModel *model, GtkTreePath *path);
 gboolean	tree_model_get_document_path(GtkTreeModel *model, const GtkTreeIter *iter, gchar *buf, gsize buf_max);
 void		tree_model_foreach(GtkTreeModel *model, GtkTreeIter *root, void (*node_callback)(GtkTreeModel *model, GtkTreePath *path, GtkTreeIter *iter, gpointer user), gpointer user);
 
 GString *	tree_view_get_expanded(GtkTreeView *view);
 void		tree_view_set_expanded(GtkTreeView *view, const gchar *paths);
+
+static gboolean	cb_treeview_separator(GtkTreeModel *model, GtkTreeIter *iter, gpointer data);
 
 /* -------------------------------------------------------------------------------------------------------------- */
 
@@ -242,6 +248,13 @@ static void cmd_repository_add_from_document(GtkAction *action, gpointer user)
 				break;
 		}
 	}
+}
+
+static void cmd_repository_add_separator(GtkAction *action, gpointer user)
+{
+	CMD_INIT("repository-add-separator", _("Add Separator"), _("Add a separator line between repositories."), NULL)
+
+	tree_model_build_separator(gitbrowser.model);
 }
 
 static void cmd_repository_remove(GtkAction *action, gpointer user)
@@ -442,6 +455,7 @@ void init_commands(GtkAction **actions, GtkWidget **menu_items)
 	const ActivateOrCreate funcs[] = {
 		cmd_repository_add,
 		cmd_repository_add_from_document,
+		cmd_repository_add_separator,
 		cmd_repository_remove,
 		cmd_repository_remove_all,
 		cmd_repository_open_quick,
@@ -739,13 +753,23 @@ void repository_save_all(GtkTreeModel *model)
 			gchar	*dpath, *fn;
 
 			gtk_tree_model_get(model, &iter, 1, &dpath, -1);
-			if((fn = g_filename_from_utf8(dpath, -1, NULL, NULL, NULL)) != NULL)
+			if(dpath == NULL)
 			{
 				if(repos->len > 0)
 					g_string_append_c(repos, PATH_SEPARATOR_CHAR);
-				g_string_append(repos, fn);
-				g_free(fn);
+				g_string_append(repos, REPO_IS_SEPARATOR);
 			}
+			else
+			{
+				if((fn = g_filename_from_utf8(dpath, -1, NULL, NULL, NULL)) != NULL)
+				{
+					if(repos->len > 0)
+						g_string_append_c(repos, PATH_SEPARATOR_CHAR);
+					g_string_append(repos, fn);
+					g_free(fn);
+				}
+			}
+			g_free(dpath);
 		} while(gtk_tree_model_iter_next(model, &iter));
 	}
 
@@ -792,8 +816,13 @@ void repository_load_all(void)
 
 			for(i = 0; repo_vector[i] != NULL; i++)
 			{
-				Repository	*repo = repository_new(repo_vector[i]);
-				tree_model_build_repository(gitbrowser.model, NULL, repo->root_path);
+				if(strcmp(repo_vector[i], REPO_IS_SEPARATOR) == 0)
+					tree_model_build_separator(gitbrowser.model);
+				else
+				{
+					Repository	*repo = repository_new(repo_vector[i]);
+					tree_model_build_repository(gitbrowser.model, NULL, repo->root_path);
+				}
 			}
 			g_free(str);
 			exp = g_key_file_get_string(in, MNEMONIC_NAME, CFG_EXPANDED, NULL);
@@ -1083,7 +1112,7 @@ GtkTreeModel * tree_model_new(void)
 	GtkTreeStore	*ts;
 	GtkTreeIter	iter;
 
-	/* First column is display text, second is corresponding path (or path part). */
+	/* First column is display text, second is corresponding path (or path part). Both are NULL for separators. */
 	ts = gtk_tree_store_new(2, G_TYPE_STRING, G_TYPE_STRING);
 	gtk_tree_store_append(ts, &iter, NULL);
 	gtk_tree_store_set(ts, &iter, 0, _("Repositories (Right-click to add)"), 1, NULL,-1);
@@ -1159,9 +1188,20 @@ void tree_model_build_repository(GtkTreeModel *model, GtkTreeIter *repo, const g
 		gtk_tree_view_expand_to_path(GTK_TREE_VIEW(gitbrowser.view), path);
 		gtk_tree_view_set_cursor_on_cell(GTK_TREE_VIEW(gitbrowser.view), path, NULL, NULL, FALSE);
 		gtk_tree_path_free(path);
-		msgwin_status_add(_("Built repository \"%s\", %lu files added in %.1f ms."), slash, (unsigned long) counter, 1e3 * g_timer_elapsed(timer, NULL));
+		msgwin_status_add(_("Built repository \"%s\"; %lu files added in %.1f ms."), slash, (unsigned long) counter, 1e3 * g_timer_elapsed(timer, NULL));
 	}
 	g_timer_destroy(timer);
+}
+
+void tree_model_build_separator(GtkTreeModel *model)
+{
+	GtkTreeIter	root, sep;
+
+	if(gtk_tree_model_get_iter_first(model, &root))
+	{
+		gtk_tree_store_append(GTK_TREE_STORE(model), &sep, &root);
+		gtk_tree_store_set(GTK_TREE_STORE(model), &sep, 0, NULL,  1, NULL,  -1);
+	}
 }
 
 /* Look for a child with the given text as its data; if not found it's added in the proper location and returned. */
@@ -1371,19 +1411,23 @@ static void menu_popup_repositories(GdkEventButton *evt)
 	gtk_menu_shell_append(GTK_MENU_SHELL(gitbrowser.main_menu), gtk_separator_menu_item_new());
 	gtk_menu_shell_append(GTK_MENU_SHELL(gitbrowser.main_menu), gitbrowser.action_menu_items[CMD_REPOSITORY_ADD]);
 	gtk_menu_shell_append(GTK_MENU_SHELL(gitbrowser.main_menu), gitbrowser.action_menu_items[CMD_REPOSITORY_ADD_FROM_DOCUMENT]);
+	gtk_menu_shell_append(GTK_MENU_SHELL(gitbrowser.main_menu), gitbrowser.action_menu_items[CMD_REPOSITORY_ADD_SEPARATOR]);
 	gtk_menu_shell_append(GTK_MENU_SHELL(gitbrowser.main_menu), gtk_separator_menu_item_new());
 	gtk_menu_shell_append(GTK_MENU_SHELL(gitbrowser.main_menu), gitbrowser.action_menu_items[CMD_REPOSITORY_REMOVE_ALL]);
 	gtk_widget_show_all(gitbrowser.main_menu);
 	gtk_menu_popup(GTK_MENU(gitbrowser.main_menu), NULL, NULL, NULL, NULL, evt->button, evt->time);
 }
 
-static void menu_popup_repository(GdkEventButton *evt)
+static void menu_popup_repository(GdkEventButton *evt, gboolean is_separator)
 {
 	GtkWidget	*menu = menu_popup_create();
 
-	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.action_menu_items[CMD_REPOSITORY_OPEN_QUICK]);
-	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_separator_menu_item_new());
-	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.action_menu_items[CMD_REPOSITORY_REFRESH]);
+	if(!is_separator)
+	{
+		gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.action_menu_items[CMD_REPOSITORY_OPEN_QUICK]);
+		gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_separator_menu_item_new());
+		gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.action_menu_items[CMD_REPOSITORY_REFRESH]);
+	}
 	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.action_menu_items[CMD_REPOSITORY_MOVE_UP]);
 	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.action_menu_items[CMD_REPOSITORY_MOVE_DOWN]);
 	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_separator_menu_item_new());
@@ -1429,16 +1473,21 @@ static gboolean evt_tree_button_press(GtkWidget *wid, GdkEventButton *evt, gpoin
 	{
 		gint		depth;
 		const gint	*indices = gtk_tree_path_get_indices_with_depth(gitbrowser.click_path, &depth);
-		gboolean	is_dir = FALSE;
+		gboolean	is_separator = FALSE, is_dir = FALSE;
 		GtkTreeIter	iter;
 
 		if(indices == NULL)
 			return FALSE;
 
-		if(depth >= 3)			/* Need to determine if clicked path is file or directory. */
+		if(depth >= 2)			/* Need to determine if clicked path is separator, file or directory. */
 		{
 			if(gtk_tree_model_get_iter(gitbrowser.model, &iter, gitbrowser.click_path))
-				is_dir = gtk_tree_model_iter_has_child(gitbrowser.model, &iter);
+			{
+				if(depth == 2)
+					is_separator = cb_treeview_separator(GTK_TREE_MODEL(gitbrowser.model), &iter, NULL);
+				else if(depth >= 3)
+					is_dir = gtk_tree_model_iter_has_child(gitbrowser.model, &iter);
+			}
 		}
 
 		if(evt->type == GDK_2BUTTON_PRESS && evt->button == 1 && depth >= 3)
@@ -1456,7 +1505,7 @@ static gboolean evt_tree_button_press(GtkWidget *wid, GdkEventButton *evt, gpoin
 			if(depth == 1 && indices[0] == 0)
 				menu_popup_repositories(evt);
 			else if(depth == 2)
-				menu_popup_repository(evt);
+				menu_popup_repository(evt, is_separator);
 			else if(depth >= 3)
 			{
 				if(is_dir)
@@ -1468,6 +1517,18 @@ static gboolean evt_tree_button_press(GtkWidget *wid, GdkEventButton *evt, gpoin
 		}
 	}
 	return FALSE;
+}
+
+static gboolean cb_treeview_separator(GtkTreeModel *model, GtkTreeIter *iter, gpointer data)
+{
+	gpointer	repo;
+	gboolean	is_separator;
+
+	gtk_tree_model_get(model, iter, 0, &repo, -1);
+	is_separator = repo == NULL;
+	g_free(repo);
+
+	return is_separator;
 }
 
 GtkWidget * tree_view_new(GtkTreeModel *model)
@@ -1483,6 +1544,7 @@ GtkWidget * tree_view_new(GtkTreeModel *model)
 	gtk_tree_view_append_column(GTK_TREE_VIEW(view), vc);
 
 	gtk_tree_view_set_headers_visible(GTK_TREE_VIEW(view), FALSE);
+	gtk_tree_view_set_row_separator_func(GTK_TREE_VIEW(view), cb_treeview_separator, NULL, NULL);
 
 	g_signal_connect(G_OBJECT(view), "button_press_event", G_CALLBACK(evt_tree_button_press), NULL);
 
