@@ -70,7 +70,7 @@ Note that the filtering is done by literal sub-string, the text you type is not 
 
 The label at the bottom shows how many files are displayed, and if filtering is active it also shows how many files have been hidden by it. You can select multiple files in the list, Gitbrowser will open them all.
 
-By default, Quick Open is bound to the keyboard shortcut Shift+Alt+O.
+By default, Quick Open is bound to the keyboard shortcut <kbd>Shift</kbd>+<kbd>Alt</kbd>+<kbd>O/<kbd>.
 
 
 ###Refreshing Repositories###
