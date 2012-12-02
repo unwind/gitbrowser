@@ -314,8 +314,8 @@ static void cmd_repository_open_quick_from_document(GtkAction *action, gpointer 
 
 	if(doc == NULL)
 		return;
-	repo = repository_find_by_path(doc->real_path);
-	repository_open_quick(repo);
+	if((repo = repository_find_by_path(doc->real_path)) != NULL)
+		repository_open_quick(repo);
 }
 
 static void cmd_repository_refresh(GtkAction *action, gpointer user)
@@ -691,7 +691,8 @@ static void repository_to_list(const Repository *repo, GtkTreeModel *model, Quic
 		gchar	*path;
 
 		gtk_tree_model_get(model, &iter, 1, &path, -1);
-		found = strcmp(path, repo->root_path) == 0;
+		if(path != NULL)	/* Separators have a NULL root path. That's what they are. */
+			found = strcmp(path, repo->root_path) == 0;
 		g_free(path);
 	} while(!found && gtk_tree_model_iter_next(model, &iter));
 	if(!found)
