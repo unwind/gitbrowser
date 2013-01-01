@@ -41,7 +41,7 @@ PLUGIN_VERSION_CHECK(147)
 
 PLUGIN_SET_INFO("Git Browser",
 		"A minimalistic browser for Git repositories. Implements a 'Quick Open' command to quickly jump to any file in a repository.",
-		"1.0-alpha3",
+		"1.0",
 		"Emil Brink <emil@obsession.se>")
 
 enum
@@ -54,6 +54,7 @@ enum
 	CMD_REPOSITORY_REMOVE_ALL,
 	CMD_REPOSITORY_OPEN_QUICK,
 	CMD_REPOSITORY_OPEN_QUICK_FROM_DOCUMENT,
+	CMD_REPOSITORY_GREP,
 	CMD_REPOSITORY_REFRESH,
 	CMD_REPOSITORY_MOVE_UP,
 	CMD_REPOSITORY_MOVE_DOWN,
@@ -70,6 +71,7 @@ enum
 
 enum {
 	KEY_REPOSITORY_OPEN_QUICK_FROM_DOCUMENT,
+	KEY_REPOSITORY_GREP,
 	NUM_KEYS
 };
 
@@ -101,7 +103,7 @@ typedef struct
 	gulong			files_total;
 	gulong			files_filtered;
 	GtkListStore		*store;			/* Only pointers into 'names' in here. */
-	GString		*names;			/* All names (files and paths), concatenated with '\0's in-between. */
+	GString			*names;			/* All names (files and paths), concatenated with '\0's in-between. */
 	GHashTable		*dedup;			/* Used during construction to de-duplicate names. Saves tons of memory. */
 	GArray			*array;			/* Used during construction to sort quickly. */
 	GtkTreeModel		*filter;
@@ -162,7 +164,17 @@ void		tree_model_foreach(GtkTreeModel *model, GtkTreeIter *root, void (*node_cal
 GString *	tree_view_get_expanded(GtkTreeView *view);
 void		tree_view_set_expanded(GtkTreeView *view, const gchar *paths);
 
+gchar *		tok_tokenize_next(gchar *text, gchar **endptr, gchar separator);
+
 static gboolean	cb_treeview_separator(GtkTreeModel *model, GtkTreeIter *iter, gpointer data);
+
+/* -------------------------------------------------------------------------------------------------------------- */
+
+/* Trivial convenience wrapper for g_spawn_sync(); returns command output. */
+gboolean subprocess_run(const gchar* working_dir, gchar **argv, gchar **env, gchar **output, gchar **error)
+{
+	return g_spawn_sync(working_dir, argv, env, G_SPAWN_SEARCH_PATH, NULL, NULL, output, error, NULL, NULL);
+}
 
 /* -------------------------------------------------------------------------------------------------------------- */
 
@@ -318,6 +330,113 @@ static void cmd_repository_open_quick_from_document(GtkAction *action, gpointer 
 		repository_open_quick(repo);
 }
 
+/* Helper function to either get a repository from a click in the browser, or from the current document. */
+static const Repository * get_repository(void)
+{
+	const GeanyDocument	*doc = document_get_current();
+	const Repository	*repo = NULL;
+
+	if(gitbrowser.click_path != NULL)
+	{
+		GtkTreeIter	iter;
+	
+		if(gtk_tree_model_get_iter(gitbrowser.model, &iter, gitbrowser.click_path))
+		{
+			gchar	*path = NULL;
+
+			gtk_tree_model_get(gitbrowser.model, &iter, 1, &path, -1);
+			if(path != NULL)
+			{
+				repo = repository_find_by_path(path);
+				g_free(path);
+			}
+		}
+	}
+	if(doc != NULL && repo == NULL)
+		repo = repository_find_by_path(doc->real_path);
+	return repo;
+}
+
+static void cmd_repository_grep(GtkAction *action, gpointer user)
+{
+	const Repository	*repo;
+
+	CMD_INIT("grep", _("Grep ..."), _("Opens a dialog accepting an expression which is sent to 'git grep', to search the repo's files."), NULL);
+
+	repo = get_repository();
+	if(repo != NULL)
+	{
+		static GtkWidget	*grep_dialog = NULL;
+		static GtkWidget	*grep_entry = NULL;
+		gchar			tbuf[128];
+		const gchar		*name;
+		gint			response;
+
+		if(grep_dialog == NULL)
+		{
+			GtkWidget	*body, *hbox;
+
+			grep_dialog = gtk_dialog_new_with_buttons("", NULL,
+					GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
+					GTK_STOCK_OK,
+					GTK_RESPONSE_ACCEPT,
+					GTK_STOCK_CANCEL,
+					GTK_RESPONSE_REJECT,
+					NULL);
+			gtk_dialog_set_default_response(GTK_DIALOG(grep_dialog), GTK_RESPONSE_ACCEPT);
+			body = gtk_dialog_get_content_area(GTK_DIALOG(grep_dialog));
+			hbox = gtk_hbox_new(FALSE, 0);
+			gtk_box_pack_start(GTK_BOX(hbox), gtk_label_new("Grep for:"), FALSE, FALSE, 0);
+			grep_entry = gtk_entry_new();
+			gtk_entry_set_activates_default(GTK_ENTRY(grep_entry), TRUE);
+			gtk_box_pack_start(GTK_BOX(hbox), grep_entry, TRUE, TRUE, 5);
+			gtk_box_pack_start(GTK_BOX(body), hbox, FALSE, FALSE, 5);
+			gtk_widget_show_all(body);
+			gtk_window_set_default_size(GTK_WINDOW(grep_dialog), 384, -1);
+		}
+		if((name = strrchr(repo->root_path, G_DIR_SEPARATOR)) != NULL)
+			name++;
+		else
+			name = repo->root_path;
+		g_snprintf(tbuf, sizeof tbuf, _("Grep in Git Repository \"%s\""), name);
+		gtk_window_set_title(GTK_WINDOW(grep_dialog), tbuf);
+
+		response = gtk_dialog_run(GTK_DIALOG(grep_dialog));
+		gtk_widget_hide(grep_dialog);
+		if(response == GTK_RESPONSE_ACCEPT)
+		{
+			gchar	*git_grep[16], *git_stdout = NULL;
+			gsize	narg = 0;
+
+			git_grep[narg++] = "git";
+			git_grep[narg++] = "grep";
+			git_grep[narg++] = "-n";
+			git_grep[narg++] = (gchar *) gtk_entry_get_text(GTK_ENTRY(grep_entry));
+			git_grep[narg] = NULL;
+
+			if(subprocess_run(repo->root_path, git_grep, NULL, &git_stdout, NULL))
+			{
+				gchar	*lines = git_stdout, *line, *nextline;
+				gsize	hits = 0;
+
+				while((line = tok_tokenize_next(lines, &nextline, '\n')) != NULL)
+				{
+					/* No GeanyDocument reference; Geany still parses text on double-click and loads the file if necessary. */
+					msgwin_msg_add(COLOR_BLUE, -1, NULL,  "%s%s%s", repo->root_path, G_DIR_SEPARATOR_S, line);
+					++hits;
+					lines = nextline;
+				}
+				g_free(git_stdout);
+				if(hits > 0)
+				{
+					msgwin_compiler_add(COLOR_BLUE, _("Found %lu occurances of \"%s\"."), (unsigned long) hits, gtk_entry_get_text(GTK_ENTRY(grep_entry)));
+					msgwin_switch_tab(MSG_MESSAGE, TRUE);
+				}
+			}
+		}
+	}
+}
+
 static void cmd_repository_refresh(GtkAction *action, gpointer user)
 {
 	GtkTreeIter	iter, child;
@@ -460,6 +579,7 @@ void init_commands(GtkAction **actions, GtkWidget **menu_items)
 		cmd_repository_remove_all,
 		cmd_repository_open_quick,
 		cmd_repository_open_quick_from_document,
+		cmd_repository_grep,
 		cmd_repository_refresh,
 		cmd_repository_move_up,
 		cmd_repository_move_down,
@@ -478,14 +598,6 @@ void init_commands(GtkAction **actions, GtkWidget **menu_items)
 		menu_items[i] = gtk_action_create_menu_item(actions[i]);
 		gtk_widget_show(menu_items[i]);
 	}
-}
-
-/* -------------------------------------------------------------------------------------------------------------- */
-
-/* Trivial convenience wrapper for g_spawn_sync(); returns command output. */
-gboolean subprocess_run(const gchar* working_dir, gchar **argv, gchar **env, gchar **output, gchar **error)
-{
-	return g_spawn_sync(working_dir, argv, env, G_SPAWN_SEARCH_PATH, NULL, NULL, output, error, NULL, NULL);
 }
 
 /* -------------------------------------------------------------------------------------------------------------- */
@@ -1426,6 +1538,7 @@ static void menu_popup_repository(GdkEventButton *evt, gboolean is_separator)
 	if(!is_separator)
 	{
 		gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.action_menu_items[CMD_REPOSITORY_OPEN_QUICK]);
+		gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.action_menu_items[CMD_REPOSITORY_GREP]);
 		gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_separator_menu_item_new());
 		gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.action_menu_items[CMD_REPOSITORY_REFRESH]);
 	}
@@ -1658,6 +1771,9 @@ static gboolean cb_key_group_callback(guint key_id)
 	case KEY_REPOSITORY_OPEN_QUICK_FROM_DOCUMENT:
 		gtk_action_activate(gitbrowser.actions[CMD_REPOSITORY_OPEN_QUICK_FROM_DOCUMENT]);
 		return TRUE;
+	case KEY_REPOSITORY_GREP:
+		gtk_action_activate(gitbrowser.actions[CMD_REPOSITORY_GREP]);
+		break;
 	}
 	return FALSE;
 }
@@ -1677,6 +1793,7 @@ void plugin_init(GeanyData *geany_data)
 
 	gitbrowser.key_group = plugin_set_key_group(geany_plugin, MNEMONIC_NAME, NUM_KEYS, cb_key_group_callback);
 	keybindings_set_item(gitbrowser.key_group, KEY_REPOSITORY_OPEN_QUICK_FROM_DOCUMENT, NULL, GDK_KEY_o, GDK_MOD1_MASK | GDK_SHIFT_MASK, "repository-open-quick-from-document", _("Quick Open from Document"), gitbrowser.action_menu_items[CMD_REPOSITORY_OPEN_QUICK_FROM_DOCUMENT]);
+	keybindings_set_item(gitbrowser.key_group, KEY_REPOSITORY_GREP, NULL, GDK_KEY_g, GDK_MOD1_MASK | GDK_SHIFT_MASK, "repository-grep", _("Grep Repository"), gitbrowser.action_menu_items[CMD_REPOSITORY_GREP]);
 
 	dir = g_strconcat(geany->app->configdir, G_DIR_SEPARATOR_S, "plugins", G_DIR_SEPARATOR_S, MNEMONIC_NAME, NULL);
 	utils_mkdir(dir, TRUE);

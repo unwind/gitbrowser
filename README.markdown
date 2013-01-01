@@ -73,6 +73,17 @@ The label at the bottom shows how many files are displayed, and if filtering is 
 By default, Quick Open is bound to the keyboard shortcut <kbd>Shift</kbd>+<kbd>Alt</kbd>+<kbd>O</kbd>.
 
 
+###Greping a Repository###
+This is simply a GUI way of running "git grep", and collecting the output into Geany's message window.
+Right-clicking the repository and selecting "Grep" or pressing the keyboard shortcut (<kbd>Shift</kbd>+<kbd>Alt</kbd>+<kbd>G</kbd> by default) opens this dialog:
+
+![Grep Dialog](https://github.com/unwind/gitbrowser/raw/master/doc/screenshots/grep.png "Grep")
+
+The matches returned by git will be added to Geany's message window, and the relevant tab will be displayed for easy access.
+
+When you double-click something that looks like a filename followed by a line number in the message window, Geany will attempt to open the file and put the cursor on the indicated line.
+
+
 ###Refreshing Repositories###
 Gitbrowser will not automatically detect if files in a repository are added or removed. So to re-synchronize the browser you can use the Refresh command from the repository menu.
 
