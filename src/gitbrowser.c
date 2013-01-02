@@ -405,13 +405,14 @@ static void cmd_repository_grep(GtkAction *action, gpointer user)
 		gtk_widget_hide(grep_dialog);
 		if(response == GTK_RESPONSE_ACCEPT)
 		{
-			gchar	*git_grep[16], *git_stdout = NULL;
-			gsize	narg = 0;
+			const gchar	*pattern = gtk_entry_get_text(GTK_ENTRY(grep_entry));
+			gchar		*git_grep[16], *git_stdout = NULL;
+			gsize		narg = 0;
 
 			git_grep[narg++] = "git";
 			git_grep[narg++] = "grep";
 			git_grep[narg++] = "-n";
-			git_grep[narg++] = (gchar *) gtk_entry_get_text(GTK_ENTRY(grep_entry));
+			git_grep[narg++] = (gchar *) pattern;
 			git_grep[narg] = NULL;
 
 			if(subprocess_run(repo->root_path, git_grep, NULL, &git_stdout, NULL))
@@ -419,19 +420,17 @@ static void cmd_repository_grep(GtkAction *action, gpointer user)
 				gchar	*lines = git_stdout, *line, *nextline;
 				gsize	hits = 0;
 
+				msgwin_msg_add(COLOR_BLUE, -1, NULL, _("Searching repository \"%s\" for \"%s\":"), name, pattern);
+				msgwin_switch_tab(MSG_MESSAGE, TRUE);
 				while((line = tok_tokenize_next(lines, &nextline, '\n')) != NULL)
 				{
-					/* No GeanyDocument reference; Geany still parses text on double-click and loads the file if necessary. */
+					/* No GeanyDocument reference; Geany still parses text when clicked and loads the file if necessary. */
 					msgwin_msg_add(COLOR_BLUE, -1, NULL,  "%s%s%s", repo->root_path, G_DIR_SEPARATOR_S, line);
 					++hits;
 					lines = nextline;
 				}
 				g_free(git_stdout);
-				if(hits > 0)
-				{
-					msgwin_compiler_add(COLOR_BLUE, _("Found %lu occurances of \"%s\"."), (unsigned long) hits, gtk_entry_get_text(GTK_ENTRY(grep_entry)));
-					msgwin_switch_tab(MSG_MESSAGE, TRUE);
-				}
+				msgwin_msg_add(COLOR_BLUE, -1, NULL, _("Found %lu occurances."), (unsigned long) hits);
 			}
 		}
 	}

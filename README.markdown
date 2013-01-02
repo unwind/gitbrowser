@@ -80,8 +80,9 @@ Right-clicking the repository and selecting "Grep" or pressing the keyboard shor
 ![Grep Dialog](https://github.com/unwind/gitbrowser/raw/master/doc/screenshots/grep.png "Grep")
 
 The matches returned by git will be added to Geany's message window, and the relevant tab will be displayed for easy access.
+A count of matches is also shown.
 
-When you double-click something that looks like a filename followed by a line number in the message window, Geany will attempt to open the file and put the cursor on the indicated line.
+When you click something that looks like a filename followed by a line number in the message window, Geany will attempt to open the file and put the cursor on the indicated line.
 
 
 ###Refreshing Repositories###
