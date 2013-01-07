@@ -79,6 +79,8 @@ Right-clicking the repository and selecting "Grep" or pressing the keyboard shor
 
 ![Grep Dialog](https://github.com/unwind/gitbrowser/raw/master/doc/screenshots/grep.png "Grep")
 
+The text entry will be filled in with either the currently selected text, or the word under the cursor if no selection exists.
+
 The matches returned by git will be added to Geany's message window, and the relevant tab will be displayed for easy access.
 A count of matches is also shown.
 

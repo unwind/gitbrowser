@@ -41,7 +41,7 @@ PLUGIN_VERSION_CHECK(147)
 
 PLUGIN_SET_INFO("Git Browser",
 		"A minimalistic browser for Git repositories. Implements a 'Quick Open' command to quickly jump to any file in a repository.",
-		"1.0",
+		"1.0.1",
 		"Emil Brink <emil@obsession.se>")
 
 enum
@@ -357,6 +357,33 @@ static const Repository * get_repository(void)
 	return repo;
 }
 
+/* Put some reasonable word in the entry; taken from either selection or word under cursor. */
+static void grep_get_word(GtkWidget *entry)
+{
+	const GeanyDocument	*doc = document_get_current();
+
+	if(doc != NULL)
+	{
+		gchar	*text;
+
+		if(sci_has_selection(doc->editor->sci))
+			text = sci_get_selection_contents(doc->editor->sci);
+		else
+			text = editor_get_word_at_pos(doc->editor, -1, NULL);
+
+		if(text != NULL)
+		{
+			guint16	len;
+
+			gtk_entry_set_text(GTK_ENTRY(entry), text);
+			len = gtk_entry_get_text_length(GTK_ENTRY(entry));
+			gtk_editable_set_position(GTK_EDITABLE(entry), len);
+			gtk_editable_select_region(GTK_EDITABLE(entry), 0, len);
+			g_free(text);
+		}
+	}
+}
+
 static void cmd_repository_grep(GtkAction *action, gpointer user)
 {
 	const Repository	*repo;
@@ -400,6 +427,7 @@ static void cmd_repository_grep(GtkAction *action, gpointer user)
 			name = repo->root_path;
 		g_snprintf(tbuf, sizeof tbuf, _("Grep in Git Repository \"%s\""), name);
 		gtk_window_set_title(GTK_WINDOW(grep_dialog), tbuf);
+		grep_get_word(grep_entry);
 
 		response = gtk_dialog_run(GTK_DIALOG(grep_dialog));
 		gtk_widget_hide(grep_dialog);
