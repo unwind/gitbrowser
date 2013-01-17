@@ -44,6 +44,8 @@ As you can see, adding a repository is quite fast, even for very large repositor
 
 Gitbrowser's tree view will include *all* files that are part of each repository, regardless of type or extension. This is perhaps slighly pointless (you currently can't do anything with files that Geany can't open for editing), but it's also simple and does a lot to reinforce the idea that Gitbrowser simply lets you visualize your repositories as trees.
 
+Note that Gitbrowser will indicate the branch of each repository by adding it enclosed in square brackets after the name of the repository.
+
 ###Adding Separators###
 Separators are simply thin horizontal lines that live in the list of repositories. They are completely passive, all they do is visually separate the repositories from each other.
 

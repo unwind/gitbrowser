@@ -19,6 +19,7 @@
  * along with gitbrowser.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#include <ctype.h>
 #include <string.h>
 
 #include <gdk/gdkkeysyms.h>
@@ -1252,10 +1253,10 @@ GtkTreeModel * tree_model_new(void)
 	GtkTreeStore	*ts;
 	GtkTreeIter	iter;
 
-	/* First column is display text, second is corresponding path (or path part). Both are NULL for separators. */
+	/* First column is display text, second is corresponding path (or path part). All are NULL for separators. */
 	ts = gtk_tree_store_new(2, G_TYPE_STRING, G_TYPE_STRING);
 	gtk_tree_store_append(ts, &iter, NULL);
-	gtk_tree_store_set(ts, &iter, 0, _("Repositories (Right-click to add)"), 1, NULL,-1);
+	gtk_tree_store_set(ts, &iter, 0, _("Repositories (Right-click to add)"), 1, NULL, -1);
 
 	return GTK_TREE_MODEL(ts);
 }
@@ -1289,6 +1290,36 @@ gboolean tree_model_find_repository(GtkTreeModel *model, const gchar *root_path,
 static guint	tree_model_build_populate(GtkTreeModel *model, gchar *lines, GtkTreeIter *parent);
 static guint	tree_model_build_traverse(GtkTreeModel *model, GNode *root, GtkTreeIter *parent);
 
+/* Run "git branch" to figure out which branch <root_path> is on. */
+static gboolean get_branch(gchar *branch, gsize branch_max, const gchar *root_path)
+{
+	gchar		*git_branch[] = { "git", "branch", "--no-color", NULL }, *git_stdout = NULL, *git_stderr = NULL;
+	gboolean	ret = FALSE;
+
+	if(subprocess_run(root_path, git_branch, NULL, &git_stdout, &git_stderr))
+	{
+		gchar	*lines = git_stdout, *line, *nextline;
+
+		while((line = tok_tokenize_next(lines, &nextline, '\n')) != NULL)
+		{
+			if(line[0] == '*')
+			{
+				const gchar	*ptr = line + 1;
+
+				while(isspace((unsigned int) *ptr))
+					ptr++;
+
+				ret = g_snprintf(branch, branch_max, "%s", ptr) < branch_max;
+				break;
+			}
+			lines = nextline;
+		}
+		g_free(git_stdout);
+		g_free(git_stderr);
+	}
+	return ret;
+}
+
 void tree_model_build_repository(GtkTreeModel *model, GtkTreeIter *repo, const gchar *root_path)
 {
 	GtkTreeIter	new;
@@ -1305,6 +1336,7 @@ void tree_model_build_repository(GtkTreeModel *model, GtkTreeIter *repo, const g
 	if(repo == NULL)
 	{
 		GtkTreeIter	iter;
+		gchar		branch[256];
 
 		if(gtk_tree_model_get_iter_first(model, &iter))
 		{
@@ -1312,7 +1344,15 @@ void tree_model_build_repository(GtkTreeModel *model, GtkTreeIter *repo, const g
 			gtk_tree_store_append(GTK_TREE_STORE(model), repo, &iter);
 		}
 		/* At this point, we have a root iter in the tree, which we need to populate. */
-		gtk_tree_store_set(GTK_TREE_STORE(model), repo, 0, slash, 1, root_path, -1);
+		if(get_branch(branch, sizeof branch, root_path))
+		{
+			gchar	disp[1024];
+
+			g_snprintf(disp, sizeof disp, "%s [%s]", slash, branch);
+			gtk_tree_store_set(GTK_TREE_STORE(model), repo,  0, disp,  1, root_path,  -1);
+		}
+		else
+			gtk_tree_store_set(GTK_TREE_STORE(model), repo,  0, slash,  1, root_path,  -1);
 	}
 	/* Now list the repository, and build a tree representation. Easy-peasy, right? */
 	timer = g_timer_new();
@@ -1666,7 +1706,7 @@ static gboolean cb_treeview_separator(GtkTreeModel *model, GtkTreeIter *iter, gp
 	gboolean	is_separator;
 
 	gtk_tree_model_get(model, iter, 0, &repo, -1);
-	is_separator = repo == NULL;
+	is_separator = (repo == NULL);
 	g_free(repo);
 
 	return is_separator;
