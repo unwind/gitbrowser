@@ -13,8 +13,8 @@ PLUGINDIR=`pkg-config --variable=libdir geany`/geany
 
 # --------------------------------------------------------------
 
-$(BASENAME).so:	$(BASENAME).o
-		gcc -shared -o $@ $(LDLIBS) $<
+$(BASENAME).so:	$(BASENAME).o levenshtein.o
+		gcc -shared -o $@ $(LDLIBS) $^
 
 $(BASENAME).o:	$(BASENAME).c
 

@@ -26,6 +26,8 @@
 
 #include "geanyplugin.h"
 
+#include "levenshtein.h"
+
 #define	MNEMONIC_NAME			"gitbrowser"
 #define	CFG_REPOSITORIES		"repositories"
 #define	CFG_EXPANDED			"expanded"
@@ -81,6 +83,7 @@ enum {
 	QO_NAME_LOWER,
 	QO_PATH,
 	QO_VISIBLE,
+	QO_DISTANCE,
 	QO_NUM_COLUMNS
 } QuickOpenColumns;
 
@@ -91,6 +94,7 @@ typedef struct {
 	gpointer		name;
 	gpointer		name_lower;		/* For case-insensitive searching. */
 	gpointer		path;
+	guint16		distance;		/* Levenshtein distance to typed string. */
 } QuickOpenRow;
 
 typedef struct
@@ -813,6 +817,22 @@ static gint cb_array_sort(gconstpointer a, gconstpointer b)
 	return ret;
 }
 
+static gint cb_array_sort_with_distance(gconstpointer a, gconstpointer b)
+{
+	const QuickOpenRow	*ra = a, *rb = b;
+	const gint		ret = g_utf8_collate(ra->path, rb->path);
+
+	if(ret == 0)
+	{
+		if(ra->distance == rb->distance)
+			return g_utf8_collate(ra->name, rb->name);
+		if(ra->distance < rb->distance)
+			return -1;
+		return 1;
+	}
+	return ret;
+}
+
 static void repository_to_list(const Repository *repo, GtkTreeModel *model, QuickOpenInfo *qoi)
 {
 	GtkTreeIter	root, iter;
@@ -845,8 +865,9 @@ static void repository_to_list(const Repository *repo, GtkTreeModel *model, Quic
 	len = g_snprintf(buf, sizeof buf, "%s%s", repo->root_path, G_DIR_SEPARATOR_S);
 	if(len < sizeof buf)
 	{
-		GTimer	*tmr = g_timer_new();
-		gsize	i;
+		GTimer		*tmr = g_timer_new();
+		gsize		i;
+		LDState	lstate;
 
 		/* Be prepared for being re-run on the same repository, so clear data first. */
 		qoi->files_total = qoi->files_filtered = 0;
@@ -856,6 +877,7 @@ static void repository_to_list(const Repository *repo, GtkTreeModel *model, Quic
 		qoi->array = g_array_new(FALSE, FALSE, sizeof (QuickOpenRow));
 		recurse_repository_to_list(model, &iter, buf, len, qoi);
 		/* Now we need to fixup; convert stored offsets into actual absolute memory addresses. */
+		levenshtein_begin_half(&lstate, qoi->filter_text);
 		for(i = 0; i < qoi->files_total; i++)
 		{
 			QuickOpenRow	*row = &g_array_index(qoi->array, QuickOpenRow, i);
@@ -863,9 +885,11 @@ static void repository_to_list(const Repository *repo, GtkTreeModel *model, Quic
 			row->name = qoi->names->str + GPOINTER_TO_SIZE(row->name);
 			row->name_lower = qoi->names->str + GPOINTER_TO_SIZE(row->name_lower);
 			row->path = qoi->names->str + GPOINTER_TO_SIZE(row->path);
+			row->distance = levenshtein_compute_half(&lstate, row->name);
 		}
+		levenshtein_end(&lstate);
 		/* Now sort the array, hoping that's faster than sorting a tree model later on. */
-		g_array_sort(qoi->array, cb_array_sort);
+		g_array_sort(qoi->array, qoi->filter_text[0] != '\0' ? cb_array_sort_with_distance : cb_array_sort);
 		/* Finally, use the array to populate the list store. */
 		for(i = 0; i < qoi->files_total; i++)
 		{
@@ -1134,7 +1158,7 @@ void repository_open_quick(Repository *repo)
 		GtkTreeViewColumn       *vc;
 		gchar			tbuf[64], *name;
 
-		qoi->store = gtk_list_store_new(QO_NUM_COLUMNS, G_TYPE_POINTER, G_TYPE_POINTER, G_TYPE_POINTER, G_TYPE_BOOLEAN);
+		qoi->store = gtk_list_store_new(QO_NUM_COLUMNS, G_TYPE_POINTER, G_TYPE_POINTER, G_TYPE_POINTER, G_TYPE_BOOLEAN, G_TYPE_UINT);
 		qoi->names = g_string_sized_new(32 << 10);
 		repository_to_list(repo, gitbrowser.model, qoi);
 
