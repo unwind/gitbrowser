@@ -66,7 +66,12 @@ The Quick Open dialog looks like this:
 
 ![Quick Open screenshot](https://github.com/unwind/gitbrowser/raw/master/doc/screenshots/quickopen.png "Quick Open")
 
-Once opened, Quick Open lets you use the arrow keys to navigate the big list of files contained in the repository, or type to filter (in "real-time") the list of files. This allows very quick navigation to a file once you know a few characters of its filename. Since many source code projects use regular naming schemes for its files, you can often cut down the number of files visible very quickly, and thus "home in" on the file you are interested in.
+Once opened, Quick Open lets you use the arrow keys to navigate the big list of files contained in the repository, or type to filter (in "real-time") the list of files.
+This allows very quick navigation to a file once you know a few characters of its filename.
+Since many source code projects use regular naming schemes for its files, you can often cut down the number of files visible very quickly, and thus "home in" on the file you are interested in.
+
+The list is sorted on the [Levenshtein distance](http://en.wikipedia.org/wiki/Levenshtein_distance) from the text typed in the filtering box.
+This is an attempt to maximize the chance of the filtering helping to quickly bring the desired file into view.
 
 Note that the filtering is done by literal sub-string, the text you type is not interpreted as a regular expression or any other form of abstract pattern. The filtering is, however, case-insensitive, so you can type just `make` to show all `Makefiles` in a project, for instance. This makes access as fast as possible, since typing lower-case characters is typically quicker.
 
