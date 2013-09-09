@@ -1361,6 +1361,7 @@ void tree_model_build_repository(GtkTreeModel *model, GtkTreeIter *repo, const g
 	GtkTreeIter	new;
 	const gchar	*slash;
 	gchar		*git_ls_files[] = { "git", "ls-files", NULL }, *git_stdout = NULL, *git_stderr = NULL;
+	gchar		branch[256];
 	GTimer		*timer;
 
 	slash = strrchr(root_path, G_DIR_SEPARATOR);
@@ -1372,24 +1373,24 @@ void tree_model_build_repository(GtkTreeModel *model, GtkTreeIter *repo, const g
 	if(repo == NULL)
 	{
 		GtkTreeIter	iter;
-		gchar		branch[256];
 
 		if(gtk_tree_model_get_iter_first(model, &iter))
 		{
 			repo = &new;
 			gtk_tree_store_append(GTK_TREE_STORE(model), repo, &iter);
 		}
-		/* At this point, we have a root iter in the tree, which we need to populate. */
-		if(get_branch(branch, sizeof branch, root_path))
-		{
-			gchar	disp[1024];
-
-			g_snprintf(disp, sizeof disp, "%s [%s]", slash, branch);
-			gtk_tree_store_set(GTK_TREE_STORE(model), repo,  0, disp,  1, root_path,  -1);
-		}
-		else
-			gtk_tree_store_set(GTK_TREE_STORE(model), repo,  0, slash,  1, root_path,  -1);
 	}
+	/* At this point, we have a root iter in the tree, which we need to populate. */
+	if(get_branch(branch, sizeof branch, root_path))
+	{
+		gchar	disp[1024];
+
+		g_snprintf(disp, sizeof disp, "%s [%s]", slash, branch);
+		gtk_tree_store_set(GTK_TREE_STORE(model), repo,  0, disp,  1, root_path,  -1);
+	}
+	else
+		gtk_tree_store_set(GTK_TREE_STORE(model), repo,  0, slash,  1, root_path,  -1);
+
 	/* Now list the repository, and build a tree representation. Easy-peasy, right? */
 	timer = g_timer_new();
 	if(subprocess_run(root_path, git_ls_files, NULL, &git_stdout, &git_stderr))
