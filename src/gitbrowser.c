@@ -115,6 +115,7 @@ typedef struct
 	gchar			filter_text[128];	/* Cached so we don't need to query GtkEntry on each filter callback. */
 	guint			filter_idle;
 	GtkTreeIter		filter_iter;		/* For idle. */
+	LDState			filter_ld;
 } QuickOpenInfo;
 
 typedef struct
@@ -709,6 +710,7 @@ Repository * repository_new(const gchar *root_path)
 	r->quick_open.view = NULL;
 	r->quick_open.filter_text[0] = '\0';
 	r->quick_open.filter_idle = 0;
+	levenshtein_init(&r->quick_open.filter_ld);
 
 	g_hash_table_insert(gitbrowser.repositories, r->root_path, r);
 
@@ -876,8 +878,8 @@ static void repository_to_list(const Repository *repo, GtkTreeModel *model, Quic
 		qoi->dedup = g_hash_table_new(g_str_hash, g_str_equal);
 		qoi->array = g_array_new(FALSE, FALSE, sizeof (QuickOpenRow));
 		recurse_repository_to_list(model, &iter, buf, len, qoi);
-		/* Now we need to fixup; convert stored offsets into actual absolute memory addresses. */
 		levenshtein_begin_half(&lstate, qoi->filter_text);
+		/* Now we need to fixup; convert stored offsets into actual absolute memory addresses. */
 		for(i = 0; i < qoi->files_total; i++)
 		{
 			QuickOpenRow	*row = &g_array_index(qoi->array, QuickOpenRow, i);
@@ -889,14 +891,14 @@ static void repository_to_list(const Repository *repo, GtkTreeModel *model, Quic
 		}
 		levenshtein_end(&lstate);
 		/* Now sort the array, hoping that's faster than sorting a tree model later on. */
-		g_array_sort(qoi->array, qoi->filter_text[0] != '\0' ? cb_array_sort_with_distance : cb_array_sort);
+		/*g_array_sort(qoi->array, qoi->filter_text[0] != '\0' ? cb_array_sort_with_distance : cb_array_sort);*/
 		/* Finally, use the array to populate the list store. */
 		for(i = 0; i < qoi->files_total; i++)
 		{
 			const QuickOpenRow	*row = &g_array_index(qoi->array, QuickOpenRow, i);
 			gtk_list_store_insert_with_values(qoi->store, &iter, INT_MAX, QO_NAME, row->name, QO_NAME_LOWER, row->name_lower, QO_PATH, row->path, QO_VISIBLE, TRUE, -1);
 		}
-		/* We no longer need the sorting array, so throw it away. */
+		/* We no longer need the array, so throw it away. */
 		g_array_free(qoi->array, TRUE);
 		g_hash_table_destroy(qoi->dedup);
 		g_timer_destroy(tmr);
@@ -1048,6 +1050,12 @@ static gboolean cb_open_quick_filter_idle(gpointer user)
 			gtk_list_store_set(GTK_LIST_STORE(qoi->store), &qoi->filter_iter, QO_VISIBLE, new_visible, -1);
 		if(!new_visible)
 			qoi->files_filtered++;
+		else
+		{
+			const gint16 dist = levenshtein_compute_half(&qoi->filter_ld, name_lower);
+			gtk_list_store_set(GTK_LIST_STORE(qoi->store), &qoi->filter_iter, QO_DISTANCE, dist, -1);
+/*			msgwin_msg_add(COLOR_BLACK, -1, NULL, "distance to '%s' = %u", name_lower, dist);*/
+		}
 		valid = gtk_tree_model_iter_next(GTK_TREE_MODEL(qoi->store), &qoi->filter_iter);
 	}
 	g_timer_destroy(tmr);
@@ -1059,6 +1067,7 @@ static gboolean cb_open_quick_filter_idle(gpointer user)
 		gtk_tree_view_set_cursor(GTK_TREE_VIEW(qoi->view), first, NULL, FALSE);
 		gtk_tree_path_free(first);
 		qoi->filter_idle = 0;
+		levenshtein_end(&qoi->filter_ld);
 		gtk_spinner_stop(GTK_SPINNER(qoi->spinner));
 		gtk_widget_hide(qoi->spinner);
 		return FALSE;
@@ -1083,6 +1092,9 @@ static void evt_open_quick_entry_changed(GtkWidget *wid, gpointer user)
 		{
 			qoi->filter_idle = g_idle_add(cb_open_quick_filter_idle, qoi);
 		}
+		if(levenshtein_active(&qoi->filter_ld))
+			levenshtein_end(&qoi->filter_ld);
+		levenshtein_begin_half(&qoi->filter_ld, filter_lower);
 		qoi->files_filtered = 0;
 		gtk_spinner_start(GTK_SPINNER(qoi->spinner));
 		gtk_widget_show(qoi->spinner);

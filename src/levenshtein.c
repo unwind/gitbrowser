@@ -64,6 +64,19 @@ static gboolean lkey_equal(gconstpointer a, gconstpointer b)
 
 /* -------------------------------------------------------------------------------------------------------------- */
 
+void levenshtein_init(LDState *state)
+{
+	state->cache = NULL;
+	state->data = NULL;
+	state->half_str = NULL;
+	state->half_len = 0;
+}
+
+gboolean levenshtein_active(const LDState *state)
+{
+	return state->cache != NULL;
+}
+
 void levenshtein_begin(LDState *state)
 {
 	state->cache = g_hash_table_new(lkey_hash, lkey_equal);
@@ -136,4 +149,5 @@ void levenshtein_end(LDState *state)
 		next = iter->next;
 		g_slice_free1(sizeof *iter, iter);
 	}
+	state->cache = NULL;
 }
