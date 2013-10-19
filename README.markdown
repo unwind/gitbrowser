@@ -94,12 +94,12 @@ A count of matches is also shown.
 When you click something that looks like a filename followed by a line number in the message window, Geany will attempt to open the file and put the cursor on the indicated line.
 
 
-##Exploring##
+###Exploring###
 The "Explore ..." menu command will try to open the local directory using your system's default file browser.
 For systems running e.g. the GNOME desktop, this will open a new Nautilus window showing the repository's root directory.
 
 
-##Terminal##
+###Terminal###
 The "Terminal ..." menu command will open a new terminal (command-line) window in the repository's root directory.
 You can configure which command Gitbrowser should run in order to open the terminal, in the Plugin preferences window.
 
@@ -123,18 +123,18 @@ If you right-click on a directory inside a repository, you will see this menu:
 
 ![Directory Menu](https://github.com/unwind/gitbrowser/raw/master/doc/screenshots/dir-menu.png "Directory Menu")
 
-The first two obviously-named commands simply let you expand or collapse the directory. Gitbrowser saves the expanded/collapsed state of the included
-repositories' directories when you quit Geany, and loads them back in when restarted. The third command opens the directory containing the directory you clicked in the system's default application. For many current Linux desktop systems, this means the default file browser (Nautilus) will open.
+The first two obviously-named commands simply let you expand or collapse the directory.
+Gitbrowser saves the expanded/collapsed state of the included repositories' directories when you quit Geany, and loads them back in when restarted.
+The Explore and Terminal commands work just as for repositories (which makes sense, since repositories are directories too).
 
-Right-clicking on an actual file gives you this menu:
+Right-clicking on an actual file gives you this, rather tiny, menu:
 
 ![File Menu](https://github.com/unwind/gitbrowser/raw/master/doc/screenshots/file-menu.png "File Menu")
 
-The first choice is the most typical operation, which makes Gitbrowser attempt to open the file, which will simply open it in Geany if successful.
+The first choice is the most typical operation, which makes Gitbrowser attempt to open the file in Geany for editing.
 
-The second choice lets you copy the full name, including the physical path on your local computer, of the right-clicked file to the system's clipboard. This can be useful if you want to e.g. run shell commands involving this file, include it in documentation, and so on.
-
-The third choice opens the directory containing the file you clicked with the system's default application for opening directories.
+The second choice lets you copy the full name, including the physical path on your local computer, of the right-clicked file to the system's clipboard.
+This can be useful if you want to e.g. run shell commands involving this file, include it in documentation, and so on.
 
 
 ##Configuring Gitbrowser##
