@@ -33,6 +33,7 @@
 #define	CFG_EXPANDED			"expanded"
 #define	CFG_QUICK_OPEN_FILTER_MAX_TIME	"quick_open_filter_max_time"
 #define	CFG_QUICK_OPEN_HIDE_SRC		"quick_open_hide_re"
+#define	CFG_TERMINAL_CMD		"terminal_cmd"
 #define	PATH_SEPARATOR_CHAR		':'
 #define	REPO_IS_SEPARATOR		"-"
 
@@ -64,6 +65,7 @@ enum
 
 	CMD_DIR_EXPAND,
 	CMD_DIR_COLLAPSE,
+	CMD_DIR_TERMINAL,
 
 	CMD_FILE_OPEN,
 	CMD_FILE_COPY_NAME,
@@ -91,9 +93,9 @@ enum {
  * const in the list store, reducing dynamic memory management overhead when reading from it.
 */
 typedef struct {
-	gpointer		name;
-	gpointer		name_lower;		/* For case-insensitive searching. */
-	gpointer		path;
+	gpointer	name;
+	gpointer	name_lower;		/* For case-insensitive searching. */
+	gpointer	path;
 	guint16		distance;		/* Levenshtein distance to typed string. */
 } QuickOpenRow;
 
@@ -144,12 +146,14 @@ static struct
 
 	gchar		*quick_open_hide_src;
 	gint		quick_open_filter_max_time;	/* In milliseconds. */
+	gchar		*terminal_cmd;
 } gitbrowser;
 
 typedef struct
 {
 	GtkWidget	*filter_re;
 	GtkWidget	*filter_time;
+	GtkWidget	*terminal_cmd;
 } PrefsWidgets;
 
 /* -------------------------------------------------------------------------------------------------------------- */
@@ -555,6 +559,34 @@ static void cmd_dir_collapse(GtkAction *action, gpointer user)
 	gtk_tree_view_collapse_row(GTK_TREE_VIEW(gitbrowser.view), gitbrowser.click_path);
 }
 
+static void cmd_dir_terminal(GtkAction *action, gpointer user)
+{
+	GtkTreeIter	iter;
+	gchar		*argv[2] = { NULL, NULL };
+
+	CMD_INIT("dir-terminal", _("Terminal ..."), _("Opens a terminal (command line) window here."), NULL);
+
+	/* If the configured terminal command starts with a dollar, treat it as an environment variable reference. */
+	argv[0] = gitbrowser.terminal_cmd;
+	if(argv[0] != NULL && argv[0][0] == '$')
+	{
+		if((argv[0] = (gchar *) g_getenv(argv[0] + 1)) == NULL)
+		{
+			msgwin_msg_add(COLOR_BLACK, -1, NULL, "Gitbrowser: Failed to look up terminal command from %s", gitbrowser.terminal_cmd);
+			return;
+		}
+	}
+
+	if(gtk_tree_model_get_iter(gitbrowser.model, &iter, gitbrowser.click_path))
+	{
+		char	buf[1024];
+
+		tree_model_get_document_path(gitbrowser.model, &iter, buf, sizeof buf);
+		if(buf[0] != '\0' && argv[0] != NULL && argv[0] != '\0')
+			g_spawn_async(buf, argv, NULL, G_SPAWN_SEARCH_PATH, NULL, NULL, NULL, NULL);
+	}
+}
+
 static void cmd_file_open(GtkAction *action, gpointer user)
 {
 	CMD_INIT("file-open", _("Open"), _("Opens a file as a new document, or focuses the document if already opened."), GTK_STOCK_OPEN);
@@ -618,6 +650,7 @@ void init_commands(GtkAction **actions, GtkWidget **menu_items)
 		cmd_repository_move_down,
 		cmd_dir_expand,
 		cmd_dir_collapse,
+		cmd_dir_terminal,
 		cmd_file_open,
 		cmd_file_copy_name,
 		cmd_file_explore,
@@ -1662,6 +1695,7 @@ static void menu_popup_directory(GdkEventButton *evt)
 	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.action_menu_items[CMD_DIR_COLLAPSE]);
 	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_separator_menu_item_new());
 	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.action_menu_items[CMD_FILE_EXPLORE]);
+	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.action_menu_items[CMD_DIR_TERMINAL]);
 	gtk_widget_show_all(menu);
 	gtk_menu_popup(GTK_MENU(menu), NULL, NULL, NULL, NULL, evt->button, evt->time);
 }
@@ -1894,6 +1928,7 @@ void plugin_init(GeanyData *geany_data)
 	gitbrowser.repositories = g_hash_table_new(g_str_hash, g_str_equal);
 	gitbrowser.quick_open_filter_max_time = 50;
 	gitbrowser.quick_open_hide = NULL;
+	gitbrowser.terminal_cmd = "gnome-terminal";
 
 	gitbrowser.key_group = plugin_set_key_group(geany_plugin, MNEMONIC_NAME, NUM_KEYS, cb_key_group_callback);
 	keybindings_set_item(gitbrowser.key_group, KEY_REPOSITORY_OPEN_QUICK_FROM_DOCUMENT, NULL, GDK_KEY_o, GDK_MOD1_MASK | GDK_SHIFT_MASK, "repository-open-quick-from-document", _("Quick Open from Document"), gitbrowser.action_menu_items[CMD_REPOSITORY_OPEN_QUICK_FROM_DOCUMENT]);
@@ -1907,6 +1942,7 @@ void plugin_init(GeanyData *geany_data)
 	gitbrowser.prefs = stash_group_new(MNEMONIC_NAME);
 	stash_group_add_entry(gitbrowser.prefs, &gitbrowser.quick_open_hide_src, CFG_QUICK_OPEN_HIDE_SRC, NULL, CFG_QUICK_OPEN_HIDE_SRC);
 	stash_group_add_spin_button_integer(gitbrowser.prefs, &gitbrowser.quick_open_filter_max_time, CFG_QUICK_OPEN_FILTER_MAX_TIME, 50, CFG_QUICK_OPEN_FILTER_MAX_TIME);
+	stash_group_add_entry(gitbrowser.prefs, &gitbrowser.terminal_cmd, CFG_TERMINAL_CMD, "gnome-terminal", CFG_TERMINAL_CMD);
 
 	repository_load_all();
 
@@ -1929,7 +1965,7 @@ static void cb_configure_response(GtkDialog *dialog, gint response, gpointer use
 
 GtkWidget * plugin_configure(GtkDialog *dlg)
 {
-	GtkWidget		*vbox, *frame, *table, *label;
+	GtkWidget		*vbox, *frame, *table, *label, *hbox;
 	static PrefsWidgets	prefs_widgets;
 
 	vbox = gtk_vbox_new(FALSE, 0);
@@ -1948,11 +1984,17 @@ GtkWidget * plugin_configure(GtkDialog *dlg)
 	prefs_widgets.filter_time = gtk_spin_button_new_with_range(10, 400, 5);
 	gtk_table_attach(GTK_TABLE(table), prefs_widgets.filter_time, 1, 2, 1, 2,  GTK_EXPAND | GTK_FILL, 0, 0, 0);
 	ui_hookup_widget(GTK_WIDGET(dlg), prefs_widgets.filter_time, CFG_QUICK_OPEN_FILTER_MAX_TIME);
-
 	gtk_container_add(GTK_CONTAINER(frame), table);
-	gtk_box_pack_start(GTK_BOX(vbox), frame, GTK_EXPAND, GTK_EXPAND, 0);
+	gtk_box_pack_start(GTK_BOX(vbox), frame, TRUE, TRUE, 0);
 
-	stash_group_display(gitbrowser.prefs, GTK_WIDGET(dlg));
+	hbox = gtk_hbox_new(FALSE, 0);
+	label = gtk_label_new("Terminal command");
+	gtk_box_pack_start(GTK_BOX(hbox), label, FALSE, FALSE, 0);
+	prefs_widgets.terminal_cmd = gtk_entry_new();
+	gtk_box_pack_start(GTK_BOX(hbox), prefs_widgets.terminal_cmd, TRUE, TRUE, 5);
+	ui_hookup_widget(GTK_WIDGET(dlg), prefs_widgets.terminal_cmd, CFG_TERMINAL_CMD);
+	gtk_box_pack_start(GTK_BOX(vbox), hbox, FALSE, FALSE, 5);
+
 	stash_group_display(gitbrowser.prefs, GTK_WIDGET(dlg));
 
 	gtk_widget_show_all(vbox);
