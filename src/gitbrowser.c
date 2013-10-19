@@ -65,8 +65,8 @@ enum
 
 	CMD_DIR_EXPAND,
 	CMD_DIR_COLLAPSE,
-	CMD_DIR_TERMINAL,
 	CMD_DIR_EXPLORE,
+	CMD_DIR_TERMINAL,
 
 	CMD_FILE_OPEN,
 	CMD_FILE_COPY_NAME,
@@ -572,8 +572,7 @@ static void cmd_dir_explore(GtkAction *action, gpointer user)
 		tree_model_get_document_path(gitbrowser.model, &iter, buf + 7, (sizeof buf) - 7);
 		if(buf[0] != '\0')
 		{
-			if((rear = strrchr(buf, G_DIR_SEPARATOR)) != NULL)
-				*rear = '\0';
+			msgwin_msg_add(COLOR_BLACK, -1, NULL, " showing '%s'", buf);
 			gtk_show_uri(NULL, buf, GDK_CURRENT_TIME, NULL);
 		}
 	}
@@ -1676,6 +1675,8 @@ static void menu_popup_repository(GdkEventButton *evt, gboolean is_separator)
 	{
 		gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.action_menu_items[CMD_REPOSITORY_OPEN_QUICK]);
 		gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.action_menu_items[CMD_REPOSITORY_GREP]);
+		gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.action_menu_items[CMD_DIR_EXPLORE]);
+		gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.action_menu_items[CMD_DIR_TERMINAL]);
 		gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_separator_menu_item_new());
 		gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.action_menu_items[CMD_REPOSITORY_REFRESH]);
 	}
