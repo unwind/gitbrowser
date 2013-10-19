@@ -94,6 +94,16 @@ A count of matches is also shown.
 When you click something that looks like a filename followed by a line number in the message window, Geany will attempt to open the file and put the cursor on the indicated line.
 
 
+##Exploring##
+The "Explore ..." menu command will try to open the local directory using your system's default file browser.
+For systems running e.g. the GNOME desktop, this will open a new Nautilus window showing the repository's root directory.
+
+
+##Terminal##
+The "Terminal ..." menu command will open a new terminal (command-line) window in the repository's root directory.
+You can configure which command Gitbrowser should run in order to open the terminal, in the Plugin preferences window.
+
+
 ###Refreshing Repositories###
 Gitbrowser will not automatically detect if files in a repository are added or removed. So to re-synchronize the browser you can use the Refresh command from the repository menu.
 
@@ -140,6 +150,7 @@ The options are as follows:
 Quick Open dialog. This is handy if your repository contains a lot of files (for example images, as in the pictured expression) that you never are going to
 want to open using the Quick Open dialog. Filtering them out makes the list shorter, which makes opening and handling it faster.
 </dd>
+
 <dt>Keyboard filter for max (ms)</dt>
 <dd>Specify a time, in milliseconds, that is the maximum amount of time Gitbrowser should spend updating the filter as you type. For very large repositories,
 Gitbrowser currently won't be able to filter in real-time. So, to keep the interface from blocking totally, the filtering is "time-boxed" using this setting.
@@ -149,6 +160,16 @@ This means that even if the filtering operation as a whole requires many seconds
 not have to wait that long if you e.g. change your mind and want to cancel the Quick Open dialog.
 </p>
 </dd>
+
+<dt>Terminal command</dt>
+<dd>Specify the command that Gitbrower should run in order to open a terminal emulator window.
+<p>
+You can optionally start the command name with a dollar (<code>$</code>) symbol to make Gitbrowser treat the rest of the name as an environment variable.
+The variable's current value will be looked-up, and if it succeeds the resulting string will be used as the command.
+</pp>
+<pp>
+Note that you cannot specify any arguments to the terminal emulator; the entire string will be interpreted as the command name.
+</pp>
 </dl>
 
 Gitbrowser will save your configured settings, as well as the (properly ordered) list of added repositories, and remember them until the next time you run Geany. The configuration is typically stored in a plain text file called `$(HOME)/.config/geany/plugins/gitbrowser/gitbrowser.conf`, where `$(HOME)` refers to your home directory.
