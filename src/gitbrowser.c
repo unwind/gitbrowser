@@ -567,7 +567,7 @@ static void cmd_dir_explore(GtkAction *action, gpointer user)
 
 	if(gtk_tree_model_get_iter(gitbrowser.model, &iter, gitbrowser.click_path))
 	{
-		char	buf[1024] = "file://", *rear;
+		char	buf[1024] = "file://";
 
 		tree_model_get_document_path(gitbrowser.model, &iter, buf + 7, (sizeof buf) - 7);
 		if(buf[0] != '\0')
