@@ -113,10 +113,11 @@ typedef struct
 	GString			*names;			/* All names (files and paths), concatenated with '\0's in-between. */
 	GHashTable		*dedup;			/* Used during construction to de-duplicate names. Saves tons of memory. */
 	GArray			*array;			/* Used during construction to sort quickly. */
-	GtkTreeModel		*filter;
+	GtkTreeModel		*filter;		/* Filtered view of the quick open model. */
+	GtkTreeModel		*sort;			/* Sorted view of the filtered model. */
 	gchar			filter_text[128];	/* Cached so we don't need to query GtkEntry on each filter callback. */
 	guint			filter_idle;
-	GtkTreeIter		filter_iter;		/* For idle. */
+	guint			filter_row;		/* For the idle function. */
 	LDState			filter_ld;
 } QuickOpenInfo;
 
@@ -567,7 +568,7 @@ static void cmd_dir_explore(GtkAction *action, gpointer user)
 
 	if(gtk_tree_model_get_iter(gitbrowser.model, &iter, gitbrowser.click_path))
 	{
-		char	buf[1024] = "file://", *rear;
+		char	buf[1024] = "file://";
 
 		tree_model_get_document_path(gitbrowser.model, &iter, buf + 7, (sizeof buf) - 7);
 		if(buf[0] != '\0')
@@ -734,6 +735,7 @@ Repository * repository_new(const gchar *root_path)
 
 	r->quick_open.dialog = NULL;
 	r->quick_open.filter = NULL;
+	r->quick_open.sort = NULL;
 	r->quick_open.selection = NULL;
 	r->quick_open.files_total = 0;
 	r->quick_open.files_filtered = 0;
@@ -841,32 +843,6 @@ static void recurse_repository_to_list(GtkTreeModel *model, GtkTreeIter *iter, g
 	} while(gtk_tree_model_iter_next(model, iter));
 }
 
-static gint cb_array_sort(gconstpointer a, gconstpointer b)
-{
-	const QuickOpenRow	*ra = a, *rb = b;
-	const gint		ret = g_utf8_collate(ra->path, rb->path);
-
-	if(ret == 0)
-		return g_utf8_collate(ra->name, rb->name);
-	return ret;
-}
-
-static gint cb_array_sort_with_distance(gconstpointer a, gconstpointer b)
-{
-	const QuickOpenRow	*ra = a, *rb = b;
-	const gint		ret = g_utf8_collate(ra->path, rb->path);
-
-	if(ret == 0)
-	{
-		if(ra->distance == rb->distance)
-			return g_utf8_collate(ra->name, rb->name);
-		if(ra->distance < rb->distance)
-			return -1;
-		return 1;
-	}
-	return ret;
-}
-
 static void repository_to_list(const Repository *repo, GtkTreeModel *model, QuickOpenInfo *qoi)
 {
 	GtkTreeIter	root, iter;
@@ -895,7 +871,7 @@ static void repository_to_list(const Repository *repo, GtkTreeModel *model, Quic
 	root = iter;
 	if(!gtk_tree_model_iter_children(model, &iter, &root))
 		return;
-	/* Now 'iter' is finally pointing and the repository's first file. */
+	/* Now 'iter' is finally pointing at the repository's first file. */
 	len = g_snprintf(buf, sizeof buf, "%s%s", repo->root_path, G_DIR_SEPARATOR_S);
 	if(len < sizeof buf)
 	{
@@ -922,8 +898,6 @@ static void repository_to_list(const Repository *repo, GtkTreeModel *model, Quic
 			row->distance = levenshtein_compute_half(&lstate, row->name);
 		}
 		levenshtein_end(&lstate);
-		/* Now sort the array, hoping that's faster than sorting a tree model later on. */
-		/*g_array_sort(qoi->array, qoi->filter_text[0] != '\0' ? cb_array_sort_with_distance : cb_array_sort);*/
 		/* Finally, use the array to populate the list store. */
 		for(i = 0; i < qoi->files_total; i++)
 		{
@@ -1065,6 +1039,7 @@ static gboolean cb_open_quick_filter_idle(gpointer user)
 {
 	QuickOpenInfo	*qoi = user;
 	guint		i;
+	GtkTreeIter	iter;
 	GtkTreePath	*first;
 	gboolean	valid = TRUE;
 	GTimer		*tmr;
@@ -1073,22 +1048,25 @@ static gboolean cb_open_quick_filter_idle(gpointer user)
 	tmr = g_timer_new();
 	for(i = 0; valid && g_timer_elapsed(tmr, NULL) < max_time; i++)
 	{
-		gchar		*name_lower;
+		gchar		*name_lower, path[16];
 		gboolean	old_visible, new_visible;
 
-		gtk_tree_model_get(GTK_TREE_MODEL(qoi->store), &qoi->filter_iter, QO_NAME_LOWER, &name_lower, QO_VISIBLE, &old_visible, -1);
+		g_snprintf(path, sizeof path, "%u", qoi->filter_row);
+		valid = gtk_tree_model_get_iter_from_string(GTK_TREE_MODEL(qoi->store), &iter, path);
+		if(!valid)
+			break;
+		gtk_tree_model_get(GTK_TREE_MODEL(qoi->store), &iter, QO_NAME_LOWER, &name_lower, QO_VISIBLE, &old_visible, -1);
 		new_visible = strstr(name_lower, qoi->filter_text) != NULL;
 		if(new_visible != old_visible)
-			gtk_list_store_set(GTK_LIST_STORE(qoi->store), &qoi->filter_iter, QO_VISIBLE, new_visible, -1);
+			gtk_list_store_set(qoi->store, &iter, QO_VISIBLE, new_visible, -1);
 		if(!new_visible)
 			qoi->files_filtered++;
 		else
 		{
 			const gint16 dist = levenshtein_compute_half(&qoi->filter_ld, name_lower);
-			gtk_list_store_set(GTK_LIST_STORE(qoi->store), &qoi->filter_iter, QO_DISTANCE, dist, -1);
-/*			msgwin_msg_add(COLOR_BLACK, -1, NULL, "distance to '%s' = %u", name_lower, dist);*/
+			gtk_list_store_set(qoi->store, &iter, QO_DISTANCE, dist, -1);
 		}
-		valid = gtk_tree_model_iter_next(GTK_TREE_MODEL(qoi->store), &qoi->filter_iter);
+		++qoi->filter_row;
 	}
 	g_timer_destroy(tmr);
 	open_quick_update_label(qoi);
@@ -1118,19 +1096,18 @@ static void evt_open_quick_entry_changed(GtkWidget *wid, gpointer user)
 	g_strlcpy(qoi->filter_text, filter_lower, sizeof qoi->filter_text);
 	g_free(filter_lower);
 
-	if(gtk_tree_model_get_iter_first(GTK_TREE_MODEL(qoi->store), &qoi->filter_iter))
+	qoi->filter_row = 0;
+	if(qoi->filter_idle == 0)
 	{
-		if(qoi->filter_idle == 0)
-		{
-			qoi->filter_idle = g_idle_add(cb_open_quick_filter_idle, qoi);
-		}
-		if(levenshtein_active(&qoi->filter_ld))
-			levenshtein_end(&qoi->filter_ld);
-		levenshtein_begin_half(&qoi->filter_ld, filter_lower);
-		qoi->files_filtered = 0;
-		gtk_spinner_start(GTK_SPINNER(qoi->spinner));
-		gtk_widget_show(qoi->spinner);
+		qoi->filter_idle = g_idle_add(cb_open_quick_filter_idle, qoi);
 	}
+	if(levenshtein_active(&qoi->filter_ld))
+		levenshtein_end(&qoi->filter_ld);
+	levenshtein_begin_half(&qoi->filter_ld, filter_lower);
+	qoi->files_filtered = 0;
+	gtk_spinner_start(GTK_SPINNER(qoi->spinner));
+	gtk_widget_show(qoi->spinner);
+
 	gtk_entry_set_icon_sensitive(GTK_ENTRY(wid), GTK_ENTRY_ICON_SECONDARY, qoi->filter_text[0] != '\0');
 }
 
@@ -1184,6 +1161,28 @@ static void cdf_open_quick_location(GtkTreeViewColumn *tree_column, GtkCellRende
 	g_object_set(G_OBJECT(cell), "text", location, NULL);
 }
 
+static gint cb_open_quick_sort(GtkTreeModel *model, GtkTreeIter *a, GtkTreeIter *b, gpointer user)
+{
+	guint		da, db;
+	gint		ret;
+	const gchar	*na, *nb;
+
+	gtk_tree_model_get(model, a, QO_DISTANCE, &da, -1);
+	gtk_tree_model_get(model, b, QO_DISTANCE, &db, -1);
+
+	if(da < db)
+		return -1;
+	if(da > db)
+		return 1;
+
+	gtk_tree_model_get(model, a, QO_NAME_LOWER, &na, -1);
+	gtk_tree_model_get(model, b, QO_NAME_LOWER, &nb, -1);
+	ret = g_utf8_collate(na, nb);
+	/* Note: QO_NAME_LOWER is G_TYPE_POINTER, not string so: no g_free()! */
+
+	return ret;
+}
+
 void repository_open_quick(Repository *repo)
 {
 	QuickOpenInfo	*qoi;
@@ -1233,7 +1232,9 @@ void repository_open_quick(Repository *repo)
 		gtk_box_pack_start(GTK_BOX(vbox), label, FALSE, FALSE, 0);
 		qoi->filter = gtk_tree_model_filter_new(GTK_TREE_MODEL(qoi->store), NULL);
 		gtk_tree_model_filter_set_visible_column(GTK_TREE_MODEL_FILTER(qoi->filter), QO_VISIBLE);	/* Filter on the boolean column. */
-		qoi->view = gtk_tree_view_new_with_model(GTK_TREE_MODEL(qoi->filter));
+		qoi->sort = gtk_tree_model_sort_new_with_model(qoi->filter);
+		gtk_tree_sortable_set_default_sort_func(GTK_TREE_SORTABLE(qoi->sort), cb_open_quick_sort, qoi, NULL);
+		qoi->view = gtk_tree_view_new_with_model(GTK_TREE_MODEL(qoi->sort));
 
 		vc = gtk_tree_view_column_new();
 		cr = gtk_cell_renderer_text_new();
