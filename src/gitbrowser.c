@@ -810,10 +810,7 @@ static void recurse_repository_to_list(GtkTreeModel *model, GtkTreeIter *iter, g
 			strcpy(put, G_DIR_SEPARATOR_S);
 			path_length += strlen(G_DIR_SEPARATOR_S);
 
-			do
-			{
-				recurse_repository_to_list(model, &child, path, path_length, qoi);
-			} while(gtk_tree_model_iter_next(model, &child));
+			recurse_repository_to_list(model, &child, path, path_length, qoi);
 		}
 		else
 		{
