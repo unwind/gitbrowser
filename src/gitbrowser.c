@@ -45,7 +45,7 @@ PLUGIN_VERSION_CHECK(147)
 
 PLUGIN_SET_INFO("Git Browser",
 		"A minimalistic browser for Git repositories. Implements a 'Quick Open' command to quickly jump to any file in a repository.",
-		"1.3.0",
+		"1.3.1",
 		"Emil Brink <emil@obsession.se>")
 
 enum
@@ -312,7 +312,7 @@ static void cmd_repository_open_quick(GtkAction *action, gpointer user)
 	GtkTreeIter	iter;
 	Repository	*repo = NULL;
 
-	CMD_INIT("repository-open-quick", _("Quick Open ..."), _("Opens a document anywhere in the repository, with filtering."), GTK_STOCK_FIND);
+	CMD_INIT("repository-open-quick", _("Quick Open ..."), _("Opens a document anywhere in the repository, with filtering."), GTK_STOCK_OPEN);
 
 	if(gtk_tree_model_get_iter(gitbrowser.model, &iter, gitbrowser.click_path))
 	{
@@ -399,7 +399,7 @@ static void cmd_repository_grep(GtkAction *action, gpointer user)
 {
 	const Repository	*repo;
 
-	CMD_INIT("grep", _("Grep ..."), _("Opens a dialog accepting an expression which is sent to 'git grep', to search the repo's files."), NULL);
+	CMD_INIT("grep", _("Grep ..."), _("Opens a dialog accepting an expression which is sent to 'git grep', to search the repo's files."), GTK_STOCK_FIND);
 
 	repo = get_repository();
 	if(repo != NULL)
