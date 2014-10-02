@@ -45,7 +45,7 @@ PLUGIN_VERSION_CHECK(147)
 
 PLUGIN_SET_INFO("Git Browser",
 		"A minimalistic browser for Git repositories. Implements a 'Quick Open' command to quickly jump to any file in a repository.",
-		"1.3.1",
+		"1.3.2",
 		"Emil Brink <emil@obsession.se>")
 
 enum
