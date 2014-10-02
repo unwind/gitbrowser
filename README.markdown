@@ -84,7 +84,7 @@ By default, Quick Open is bound to the keyboard shortcut <kbd>Shift</kbd>+<kbd>A
 This is simply a GUI way of running "git grep", and collecting the output into Geany's message window.
 Right-clicking the repository and selecting "Grep" or pressing the keyboard shortcut (<kbd>Shift</kbd>+<kbd>Alt</kbd>+<kbd>G</kbd> by default) opens this dialog:
 
-![Grep Dialog](https://github.com/unwind/gitbrowser/raw/master/doc/screenshots/grep.png "Grep")
+![Grep Dialog](https://raw.githubusercontent.com/unwind/gitbrowser/master/doc/screenshots/grep.png "Grep")
 
 The text entry will be filled in with either the currently selected text, or the word under the cursor if no selection exists.
 
