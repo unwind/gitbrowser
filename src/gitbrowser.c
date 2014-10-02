@@ -406,13 +406,18 @@ static void cmd_repository_grep(GtkAction *action, gpointer user)
 	{
 		static GtkWidget	*grep_dialog = NULL;
 		static GtkWidget	*grep_entry = NULL;
+		static GtkWidget	*grep_opt_re = NULL;
+		static GtkWidget	*grep_opt_case = NULL;
+		static GtkWidget	*grep_opt_invert = NULL;
+		static GtkWidget	*grep_opt_word = NULL;
+		static GtkWidget	*grep_opt_clear = NULL;
 		gchar			tbuf[128];
 		const gchar		*name;
 		gint			response;
 
 		if(grep_dialog == NULL)
 		{
-			GtkWidget	*body, *hbox;
+			GtkWidget	*body, *vbox, *hbox, *table;
 
 			grep_dialog = gtk_dialog_new_with_buttons("", NULL,
 					GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
@@ -423,12 +428,26 @@ static void cmd_repository_grep(GtkAction *action, gpointer user)
 					NULL);
 			gtk_dialog_set_default_response(GTK_DIALOG(grep_dialog), GTK_RESPONSE_ACCEPT);
 			body = gtk_dialog_get_content_area(GTK_DIALOG(grep_dialog));
+			vbox = gtk_vbox_new(FALSE, 0);
 			hbox = gtk_hbox_new(FALSE, 0);
 			gtk_box_pack_start(GTK_BOX(hbox), gtk_label_new("Grep for:"), FALSE, FALSE, 0);
 			grep_entry = gtk_entry_new();
 			gtk_entry_set_activates_default(GTK_ENTRY(grep_entry), TRUE);
 			gtk_box_pack_start(GTK_BOX(hbox), grep_entry, TRUE, TRUE, 5);
-			gtk_box_pack_start(GTK_BOX(body), hbox, FALSE, FALSE, 5);
+			gtk_box_pack_start(GTK_BOX(vbox), hbox, FALSE, FALSE, 5);
+			table = gtk_table_new(2, 3, FALSE);
+			grep_opt_re = gtk_check_button_new_with_mnemonic("_Use regular expressions");
+			gtk_table_attach(GTK_TABLE(table), grep_opt_re, 0, 1, 0, 1, GTK_EXPAND | GTK_FILL, 0, 0, 0);
+			grep_opt_case = gtk_check_button_new_with_mnemonic("C_ase sensitive");
+			gtk_table_attach(GTK_TABLE(table), grep_opt_case, 1, 2, 0, 1, GTK_EXPAND | GTK_FILL, 0, 0, 0);
+			grep_opt_invert = gtk_check_button_new_with_mnemonic("_Invert");
+			gtk_table_attach(GTK_TABLE(table), grep_opt_invert, 0, 1, 1, 2, GTK_EXPAND | GTK_FILL, 0, 0, 0);
+			grep_opt_word = gtk_check_button_new_with_mnemonic("Match only a whole _word");
+			gtk_table_attach(GTK_TABLE(table), grep_opt_word, 1, 2, 1, 2, GTK_EXPAND | GTK_FILL, 0, 0, 0);
+			grep_opt_clear = gtk_check_button_new_with_mnemonic("C_lear Messages");
+			gtk_table_attach(GTK_TABLE(table), grep_opt_clear, 0, 1, 2, 3, GTK_EXPAND | GTK_FILL, 0, 0, 0);
+			gtk_box_pack_start(GTK_BOX(vbox), table, TRUE, TRUE, 5);
+			gtk_box_pack_start(GTK_BOX(body), vbox, FALSE, FALSE, 0);
 			gtk_widget_show_all(body);
 			gtk_window_set_default_size(GTK_WINDOW(grep_dialog), 384, -1);
 		}
@@ -445,12 +464,21 @@ static void cmd_repository_grep(GtkAction *action, gpointer user)
 		if(response == GTK_RESPONSE_ACCEPT)
 		{
 			const gchar	*pattern = gtk_entry_get_text(GTK_ENTRY(grep_entry));
+			const gboolean	clear = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(grep_opt_clear));
 			gchar		*git_grep[16], *git_stdout = NULL;
 			gsize		narg = 0;
 
 			git_grep[narg++] = "git";
 			git_grep[narg++] = "grep";
-			git_grep[narg++] = "-n";
+			git_grep[narg++] = "--line-number";
+			if(!gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(grep_opt_re)))
+				git_grep[narg++] = "--fixed-strings";
+			if(!gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(grep_opt_case)))
+				git_grep[narg++] = "--ignore-case";
+			if(gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(grep_opt_invert)))
+				git_grep[narg++] = "--invert-match";
+			if(gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(grep_opt_word)))
+				git_grep[narg++] = "--word-regexp";
 			git_grep[narg++] = (gchar *) pattern;
 			git_grep[narg] = NULL;
 
@@ -459,6 +487,8 @@ static void cmd_repository_grep(GtkAction *action, gpointer user)
 				gchar	*lines = git_stdout, *line, *nextline;
 				gsize	hits = 0;
 
+				if(clear)
+					msgwin_clear_tab(MSG_MESSAGE);
 				msgwin_msg_add(COLOR_BLUE, -1, NULL, _("Searching repository \"%s\" for \"%s\":"), name, pattern);
 				msgwin_switch_tab(MSG_MESSAGE, TRUE);
 				while((line = tok_tokenize_next(lines, &nextline, '\n')) != NULL)

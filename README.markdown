@@ -88,6 +88,12 @@ Right-clicking the repository and selecting "Grep" or pressing the keyboard shor
 
 The text entry will be filled in with either the currently selected text, or the word under the cursor if no selection exists.
 
+- If "Use regular expressions" is *not* selected, Gitbrowser passes the `--fixed-strings` option to "git grep".
+- If "Case sensitive" is *not* selected, Gitbrowser passes the `--ignore-case` option to "git grep".
+- Select "Invert" to search using the `--invert-match` option.
+- Select "Match only a whole word" to pass the `--word-regexp` option.
+- Select "Clear Messages" to clear Geany's message status window, before showing the results.
+
 The matches returned by git will be added to Geany's message window, and the relevant tab will be displayed for easy access.
 A count of matches is also shown.
 
