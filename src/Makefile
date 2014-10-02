@@ -31,4 +31,4 @@ install:
 
 # Installation for developers, who want to be able to iterate quickly.
 install-dev:
-	ln -s `pwd`/$(BASENAME).so $(PLUGINDIR)
+	ln --force --symbolic `pwd`/$(BASENAME).so $(PLUGINDIR)
