@@ -1,7 +1,7 @@
 /*
  * gitbrowser - A geany plugin to work with Git repositories.
  *
- * Copyright (C) 2011-2013 by Emil Brink <emil@obsession.se>.
+ * Copyright (C) 2011-2014 by Emil Brink <emil@obsession.se>.
  *
  * This file is part of gitbrowser.
  *
@@ -45,12 +45,13 @@ PLUGIN_VERSION_CHECK(147)
 
 PLUGIN_SET_INFO("Git Browser",
 		"A minimalistic browser for Git repositories. Implements a 'Quick Open' command to quickly jump to any file in a repository.",
-		"1.3.2",
+		"1.4.0",
 		"Emil Brink <emil@obsession.se>")
 
 enum
 {
 	CMD_REPOSITORY_ADD = 0,
+	CMD_REPOSITORY_ADD_MULTIPLE,
 	CMD_REPOSITORY_ADD_FROM_DOCUMENT,
 	CMD_REPOSITORY_ADD_SEPARATOR,
 
@@ -138,6 +139,8 @@ static struct
 	GtkTreePath	*click_path;
 	GRegex		*quick_open_hide;
 
+	GtkWidget	*add_dialog;
+
 	GHashTable	*repositories;			/* Hashed on root path. */
 
 	GeanyKeyGroup	*key_group;
@@ -192,21 +195,26 @@ gboolean subprocess_run(const gchar* working_dir, gchar **argv, gchar **env, gch
 /* Trickery to make a single function both register/create an action, and implement that action's action. */
 #define	CMD_INIT(n, l, tt, s)	if(action == NULL) { GtkAction **me = (GtkAction **) user; *me = gtk_action_new(n, _(l), _(tt), s); return; }
 
+static void add_dialog_open(const gchar *title)
+{
+	if(gitbrowser.add_dialog == NULL)
+	{
+		gitbrowser.add_dialog = gtk_file_chooser_dialog_new("", NULL, GTK_FILE_CHOOSER_ACTION_SELECT_FOLDER, GTK_STOCK_OK, GTK_RESPONSE_OK, GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL, NULL);
+	}
+	gtk_window_set_title(GTK_WINDOW(gitbrowser.add_dialog), _(title));
+}
+
 static void cmd_repository_add(GtkAction *action, gpointer user)
 {
-	static GtkWidget	*dialog = NULL;
-	gint			response;
+	gint	response;
 
 	CMD_INIT("repository-add", _("Add..."), _("Add a new repository based on a filesystem location."), GTK_STOCK_ADD)
-	if(dialog == NULL)
-	{
-		dialog = gtk_file_chooser_dialog_new(_("Add Repository"), NULL, GTK_FILE_CHOOSER_ACTION_SELECT_FOLDER, GTK_STOCK_OK, GTK_RESPONSE_OK, GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL, NULL);
-	}
-	response = gtk_dialog_run(GTK_DIALOG(dialog));
-	gtk_widget_hide(dialog);
+	add_dialog_open("Add Repository");
+	response = gtk_dialog_run(GTK_DIALOG(gitbrowser.add_dialog));
+	gtk_widget_hide(gitbrowser.add_dialog);
 	if(response == GTK_RESPONSE_OK)
 	{
-		gchar	*path = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog));
+		gchar	*path = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(gitbrowser.add_dialog));
 
 		if(path != NULL)
 		{
@@ -227,6 +235,61 @@ static void cmd_repository_add(GtkAction *action, gpointer user)
 			}
 			g_free(path);
 		}
+	}
+}
+
+/* Another recursive file tree walker, that adds repos along the way. Repos never nest. */
+static void add_multiple(const char *root)
+{
+	GDir	*dir = g_dir_open(root, 0, NULL);
+	const gchar	*fn;
+
+	if(dir == NULL)
+		return;
+
+	while((fn = g_dir_read_name(dir)) != NULL)
+	{
+		gchar	*full = g_build_filename(root, fn, NULL);
+		if(full == NULL)
+			break;
+		/* Is it a directory? */
+		if(g_file_test(full, G_FILE_TEST_IS_DIR))
+		{
+			/* Not already added? If so, don't recurse. Warning: this is O(n) but we expect human scale. */
+			if(repository_find_by_path(full) == NULL)
+			{
+				/* Check for repo here. */
+				gchar	*git = g_build_filename(full, ".git", NULL);
+				if(git == NULL)
+					break;
+				if(g_file_test(git, G_FILE_TEST_IS_DIR))
+				{
+					Repository	*repo = repository_new(full);
+					tree_model_build_repository(gitbrowser.model, NULL, repo->root_path);
+				}
+				else	/* This is the recursive step. */
+					add_multiple(full);
+				g_free(git);
+			 }
+		}
+		g_free(full);
+	}
+	g_dir_close(dir);
+}
+
+static void cmd_repository_add_multiple(GtkAction *action, gpointer user)
+{
+	gint	response;
+
+	CMD_INIT("repository-add-multiple", _("Add Multiple..."), _("Add multiple repositories by searching a filesystem location recursively."), GTK_STOCK_ADD)
+	add_dialog_open("Add Multiple Repositories");
+	response = gtk_dialog_run(GTK_DIALOG(gitbrowser.add_dialog));
+	gtk_widget_hide(gitbrowser.add_dialog);
+	if(response == GTK_RESPONSE_OK)
+	{
+		gchar	*path = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(gitbrowser.add_dialog));
+		add_multiple(path);
+		g_free(path);
 	}
 }
 
@@ -668,6 +731,7 @@ void init_commands(GtkAction **actions, GtkWidget **menu_items)
 	typedef void (*ActivateOrCreate)(GtkAction *action, gpointer user);
 	const ActivateOrCreate funcs[] = {
 		cmd_repository_add,
+		cmd_repository_add_multiple,
 		cmd_repository_add_from_document,
 		cmd_repository_add_separator,
 		cmd_repository_remove,
@@ -1693,6 +1757,7 @@ static void menu_popup_repositories(GdkEventButton *evt)
 	gtk_menu_shell_append(GTK_MENU_SHELL(gitbrowser.main_menu), gitbrowser.action_menu_items[CMD_REPOSITORY_OPEN_QUICK_FROM_DOCUMENT]);
 	gtk_menu_shell_append(GTK_MENU_SHELL(gitbrowser.main_menu), gtk_separator_menu_item_new());
 	gtk_menu_shell_append(GTK_MENU_SHELL(gitbrowser.main_menu), gitbrowser.action_menu_items[CMD_REPOSITORY_ADD]);
+	gtk_menu_shell_append(GTK_MENU_SHELL(gitbrowser.main_menu), gitbrowser.action_menu_items[CMD_REPOSITORY_ADD_MULTIPLE]);
 	gtk_menu_shell_append(GTK_MENU_SHELL(gitbrowser.main_menu), gitbrowser.action_menu_items[CMD_REPOSITORY_ADD_FROM_DOCUMENT]);
 	gtk_menu_shell_append(GTK_MENU_SHELL(gitbrowser.main_menu), gitbrowser.action_menu_items[CMD_REPOSITORY_ADD_SEPARATOR]);
 	gtk_menu_shell_append(GTK_MENU_SHELL(gitbrowser.main_menu), gtk_separator_menu_item_new());
@@ -1963,6 +2028,7 @@ void plugin_init(GeanyData *geany_data)
 	gitbrowser.quick_open_filter_max_time = 50;
 	gitbrowser.quick_open_hide = NULL;
 	gitbrowser.terminal_cmd = "gnome-terminal";
+	gitbrowser.add_dialog = NULL;
 
 	gitbrowser.key_group = plugin_set_key_group(geany_plugin, MNEMONIC_NAME, NUM_KEYS, cb_key_group_callback);
 	keybindings_set_item(gitbrowser.key_group, KEY_REPOSITORY_OPEN_QUICK_FROM_DOCUMENT, NULL, GDK_KEY_o, GDK_MOD1_MASK | GDK_SHIFT_MASK, "repository-open-quick-from-document", _("Quick Open from Document"), gitbrowser.action_menu_items[CMD_REPOSITORY_OPEN_QUICK_FROM_DOCUMENT]);
