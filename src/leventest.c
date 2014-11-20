@@ -2,7 +2,10 @@
  * Levenshtein distance module test driver program.
  *
  * Compile with:
- * gcc $(pkg-config --cflags glib-2.0) -o leventest leventest.c levenshtein.c $(pkg-config --libs glib-2.0)
+ * $ gcc $(pkg-config --cflags glib-2.0) -o leventest leventest.c levenshtein.c $(pkg-config --libs glib-2.0)
+ *
+ * Run like:
+ * $ ./leventest "ture" "true"
 */
 
 #include <stdio.h>

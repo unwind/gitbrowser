@@ -14,9 +14,15 @@ PLUGINDIR=`pkg-config --variable=libdir geany`/geany
 # --------------------------------------------------------------
 
 $(BASENAME).so:	$(BASENAME).o levenshtein.o
-		gcc -shared -o $@ $(LDLIBS) $^
+		$(CC) -shared -o $@ $(LDLIBS) $^
 
 $(BASENAME).o:	$(BASENAME).c
+
+# --------------------------------------------------------------
+
+# Test program for playing with the Levenshtein implementation.
+leventest:	leventest.c levenshtein.c levenshtein.h
+	$(CC) `pkg-config --cflags glib-2.0` -o $@ $^ `pkg-config --libs glib-2.0`
 
 # --------------------------------------------------------------
 
