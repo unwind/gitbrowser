@@ -45,7 +45,7 @@ PLUGIN_VERSION_CHECK(147)
 
 PLUGIN_SET_INFO("Git Browser",
 		"A minimalistic browser for Git repositories. Implements a 'Quick Open' command to quickly jump to any file in a repository.",
-		"1.4.0",
+		"1.5.0",
 		"Emil Brink <emil@obsession.se>")
 
 enum
@@ -117,6 +117,7 @@ typedef struct
 	GtkTreeModel		*filter;		/* Filtered view of the quick open model. */
 	GtkTreeModel		*sort;			/* Sorted view of the filtered model. */
 	gchar			filter_text[128];	/* Cached so we don't need to query GtkEntry on each filter callback. */
+	gchar			filter_lower[128];	/* Lower-case version of the filter text. */
 	guint			filter_idle;
 	guint			filter_row;		/* For the idle function. */
 	LDState			filter_ld;
@@ -837,8 +838,8 @@ Repository * repository_new(const gchar *root_path)
 	r->quick_open.names = NULL;
 	r->quick_open.view = NULL;
 	r->quick_open.filter_text[0] = '\0';
+	r->quick_open.filter_lower[0] = '\0';
 	r->quick_open.filter_idle = 0;
-	levenshtein_init(&r->quick_open.filter_ld);
 
 	g_hash_table_insert(gitbrowser.repositories, r->root_path, r);
 
@@ -1139,23 +1140,24 @@ static gboolean cb_open_quick_filter_idle(gpointer user)
 	tmr = g_timer_new();
 	for(i = 0; valid && g_timer_elapsed(tmr, NULL) < max_time; i++)
 	{
-		gchar		*name_lower, path[16];
+		gchar		*name, *name_lower, path[16];
 		gboolean	old_visible, new_visible;
 
 		g_snprintf(path, sizeof path, "%u", qoi->filter_row);
 		valid = gtk_tree_model_get_iter_from_string(GTK_TREE_MODEL(qoi->store), &iter, path);
 		if(!valid)
 			break;
-		gtk_tree_model_get(GTK_TREE_MODEL(qoi->store), &iter, QO_NAME_LOWER, &name_lower, QO_VISIBLE, &old_visible, -1);
-		new_visible = strstr(name_lower, qoi->filter_text) != NULL;
+		gtk_tree_model_get(GTK_TREE_MODEL(qoi->store), &iter, QO_NAME, &name, QO_NAME_LOWER, &name_lower, QO_VISIBLE, &old_visible, -1);
+		new_visible = strstr(name_lower, qoi->filter_lower) != NULL;
 		if(new_visible != old_visible)
 			gtk_list_store_set(qoi->store, &iter, QO_VISIBLE, new_visible, -1);
 		if(!new_visible)
 			qoi->files_filtered++;
 		else
 		{
-			const gint16 dist = levenshtein_compute_half(&qoi->filter_ld, name_lower);
+			const gint16 dist = levenshtein_compute_half(&qoi->filter_ld, name);
 			gtk_list_store_set(qoi->store, &iter, QO_DISTANCE, dist, -1);
+			printf("updated distance to '%s' to %d\n", name, dist);
 		}
 		++qoi->filter_row;
 	}
@@ -1183,23 +1185,24 @@ static void evt_open_quick_entry_changed(GtkWidget *wid, gpointer user)
 	gchar		*filter_lower;
 
 	/* Extract search string, convert to lower-case for filtering. */
+	g_strlcpy(qoi->filter_text, filter, sizeof qoi->filter_text);
 	filter_lower = g_utf8_strdown(filter, -1);
-	g_strlcpy(qoi->filter_text, filter_lower, sizeof qoi->filter_text);
+	g_strlcpy(qoi->filter_lower, filter_lower, sizeof qoi->filter_lower);
 	g_free(filter_lower);
+
+	printf("set Levenshtein reference to '%s'\n", qoi->filter_text);
+	levenshtein_begin_half(&qoi->filter_ld, qoi->filter_text);
+	qoi->files_filtered = 0;
+	gtk_spinner_start(GTK_SPINNER(qoi->spinner));
+	gtk_widget_show(qoi->spinner);
+
+	gtk_entry_set_icon_sensitive(GTK_ENTRY(wid), GTK_ENTRY_ICON_SECONDARY, qoi->filter_text[0] != '\0');
 
 	qoi->filter_row = 0;
 	if(qoi->filter_idle == 0)
 	{
 		qoi->filter_idle = g_idle_add(cb_open_quick_filter_idle, qoi);
 	}
-	if(levenshtein_active(&qoi->filter_ld))
-		levenshtein_end(&qoi->filter_ld);
-	levenshtein_begin_half(&qoi->filter_ld, filter_lower);
-	qoi->files_filtered = 0;
-	gtk_spinner_start(GTK_SPINNER(qoi->spinner));
-	gtk_widget_show(qoi->spinner);
-
-	gtk_entry_set_icon_sensitive(GTK_ENTRY(wid), GTK_ENTRY_ICON_SECONDARY, qoi->filter_text[0] != '\0');
 }
 
 static void evt_open_quick_entry_icon_release(GtkWidget *wid, GtkEntryIconPosition position, GdkEvent *evt, gpointer user)

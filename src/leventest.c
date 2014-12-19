@@ -23,6 +23,10 @@ int main(int argc, char *argv[])
 		levenshtein_begin(&state);
 		printf("distance between '%s' and '%s': %d\n", s1, s2, levenshtein_compute(&state, s1, s2));
 		levenshtein_end(&state);
+
+		levenshtein_begin_half(&state, s1);
+		printf("distance between '%s' and '%s' in half-mode: %d\n", s1, s2, levenshtein_compute_half(&state, s2));
+		levenshtein_end(&state);
 	}
 	return EXIT_SUCCESS;
 }

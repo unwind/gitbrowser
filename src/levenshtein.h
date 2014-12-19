@@ -1,7 +1,7 @@
 /*
  * Levenshtein distance computation, using GLib, for strings.
  *
- * Copyright (C) 2013 by Emil Brink <emil@obsession.se>.
+ * Copyright (C) 2013-2014 by Emil Brink <emil@obsession.se>.
  *
  * This file is part of gitbrowser.
  *
@@ -22,14 +22,10 @@
 #include <glib.h>
 
 typedef struct {
-	GHashTable	*cache;
-	gpointer	data;
 	const gchar	*half_str;
 	guint16		half_len;
 } LDState;
 
-void		levenshtein_init(LDState *state);
-gboolean	levenshtein_active(const LDState *state);
 void		levenshtein_begin(LDState *state);
 void		levenshtein_begin_half(LDState *state, const gchar *s1);
 guint16		levenshtein_compute(LDState *state, const gchar *s1, const gchar *s2);
