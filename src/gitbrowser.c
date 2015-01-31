@@ -45,7 +45,7 @@ PLUGIN_VERSION_CHECK(147)
 
 PLUGIN_SET_INFO("Git Browser",
 		"A minimalistic browser for Git repositories. Implements a 'Quick Open' command to quickly jump to any file in a repository.",
-		"1.5.0",
+		"1.5.1",
 		"Emil Brink <emil@obsession.se>")
 
 enum
@@ -522,6 +522,7 @@ static void cmd_repository_grep(GtkAction *action, gpointer user)
 		g_snprintf(tbuf, sizeof tbuf, _("Grep in Git Repository \"%s\""), name);
 		gtk_window_set_title(GTK_WINDOW(grep_dialog), tbuf);
 		grep_get_word(grep_entry);
+		gtk_widget_grab_focus(grep_entry);
 
 		response = gtk_dialog_run(GTK_DIALOG(grep_dialog));
 		gtk_widget_hide(grep_dialog);
