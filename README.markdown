@@ -8,7 +8,7 @@ Gitbrowser is based on the idea that since you already work with one system (Git
 
 I wrote it simply to [scratch the proverbial itch](http://www.neilgunton.com/doc/open_source_myths#185364); I want something like this when working on my projects, but being quite new to Git I prefer to use it manually at a "low level", directly from the command line. This is why Gitbrowser doesn't implement any actual Git operations. Having the plugin speeds up actual software development for me, since I can quickly jump between files and do edits. 
 
-##Installation##
+## Installation ##
 At the moment, Gitbrowser is not available in any pre-packaged form, so you need to build it yourself. Luckily, that isn't too hard. The following steps should do it:
 
 1. Grab the code (`git clone git://github.com/unwind/gitbrowser.git`)
@@ -18,7 +18,7 @@ At the moment, Gitbrowser is not available in any pre-packaged form, so you need
 5. If you went with the `make install` option, you can now delete the directory holding the source code.
 
 
-##The Browser###
+## The Browser ##
 Once activated in Geany's Plugin Manager, Gitbrowser will add its own page to the sidebar notebook. Initially, it will be empty and look like this:
 
 ![Empty Browser](https://github.com/unwind/gitbrowser/raw/master/doc/screenshots/empty.png "Empty Browser")
@@ -30,7 +30,7 @@ Right-clicking on the word "Repositories" will bring up a popup menu that looks 
 Before you can do much here, you need to add one or more repositories to the browser.
 
 
-##Adding Repositories##
+## Adding Repositories ##
 To add a new repository to the browser pick either "Add ..." or "Add from Document" from the menu shown above.
 
 The "Add ..." command will open up a standard file chooser, and you can pick the root directory containing your repository (the directory that contains the `.git/` directory). "Add from Document", will instead assume that the current document is part of a repository, and add that. It will find the root of the repository regardless of where in the repo the current document is located, it doesn't have to be in the repository's root.
@@ -46,20 +46,20 @@ Gitbrowser's tree view will include *all* files that are part of each repository
 
 Note that Gitbrowser will indicate the branch of each repository by adding it enclosed in square brackets after the name of the repository.
 
-###Adding Separators###
+### Adding Separators ###
 Separators are simply thin horizontal lines that live in the list of repositories. They are completely passive, all they do is visually separate the repositories from each other.
 
 They can allow you to establish some structure and order among your repos, if you have many. I use a separator between my personal repositories, and those that are forks of others' projects.
 
 
-##Repository Commands##
+## Repository Commands ##
 Once you have one or more repositories added, you can right-click on each repository to get another popup menu:
 
 ![Repository Menu](https://github.com/unwind/gitbrowser/raw/master/doc/screenshots/repo-menu.png "Repository Menu")
 
 The following sections describe the commands available on a repository.
 
-###Quick Open###
+### Quick Open ###
 An important part of Gitbrowser is the 'Quick Open' command. It's available by right-clicking either the top Repositories tree node, or on a specific repository's root node. If you open it through Repositories, it will inspect the current document to figure out which repository to do Quick Open in.
 
 The Quick Open dialog looks like this:
@@ -80,8 +80,8 @@ The label at the bottom shows how many files are displayed, and if filtering is 
 By default, Quick Open is bound to the keyboard shortcut <kbd>Shift</kbd>+<kbd>Alt</kbd>+<kbd>O</kbd>.
 
 
-###Greping a Repository###
-This is simply a GUI way of running "git grep", and collecting the output into Geany's message window.
+### Greping a Repository ###
+This is simply a GUI:fied way of running `git grep`, and collecting the output into Geany's message window.
 Right-clicking the repository and selecting "Grep" or pressing the keyboard shortcut (<kbd>Shift</kbd>+<kbd>Alt</kbd>+<kbd>G</kbd> by default) opens this dialog:
 
 ![Grep Dialog](https://raw.githubusercontent.com/unwind/gitbrowser/master/doc/screenshots/grep.png "Grep")
@@ -100,29 +100,29 @@ A count of matches is also shown.
 When you click something that looks like a filename followed by a line number in the message window, Geany will attempt to open the file and put the cursor on the indicated line.
 
 
-###Exploring###
+### Exploring ###
 The "Explore ..." menu command will try to open the local directory using your system's default file browser.
 For systems running e.g. the GNOME desktop, this will open a new Nautilus window showing the repository's root directory.
 
 
-###Terminal###
+### Terminal ###
 The "Terminal ..." menu command will open a new terminal (command-line) window in the repository's root directory.
 You can configure which command Gitbrowser should run in order to open the terminal, in the Plugin preferences window.
 
 
-###Refreshing Repositories###
+### Refreshing Repositories ###
 Gitbrowser will not automatically detect if files in a repository are added or removed. So to re-synchronize the browser you can use the Refresh command from the repository menu.
 
 
-###Reordering Repositories###
+### Reordering Repositories ###
 Every time you add a repository, it will be appended to the end of the list of repositories. To change the order, right-click on the repository you would like to move and choose either "Move Up" or "Move Down".
 
 
-###Removing a Repository###
+### Removing a Repository ###
 Pick the Remove command from the repository right-click menu to remove that repository from the browser. This does not do anything to the files on disk, all it does is remove the repository from the list maintained by the Gitbrowser plugin.
 
 
-##The Contents of a Repository##
+## The Contents of a Repository ##
 Gitbrowser does not implement a whole lot of functionality for working with the actual contents of the repositories that you have added.
 
 If you right-click on a directory inside a repository, you will see this menu:
@@ -143,7 +143,7 @@ The second choice lets you copy the full name, including the physical path on yo
 This can be useful if you want to e.g. run shell commands involving this file, include it in documentation, and so on.
 
 
-##Configuring Gitbrowser##
+## Configuring Gitbrowser ##
 You can access Gitbrowser's configuration through Geany. The window looks like this:
 
 ![Configuration Window](https://github.com/unwind/gitbrowser/raw/master/doc/screenshots/config.png "Configuration Window")
@@ -172,13 +172,13 @@ not have to wait that long if you e.g. change your mind and want to cancel the Q
 <p>
 You can optionally start the command name with a dollar (<code>$</code>) symbol to make Gitbrowser treat the rest of the name as an environment variable.
 The variable's current value will be looked-up, and if it succeeds the resulting string will be used as the command.
-</pp>
-<pp>
+</p>
+<p>
 Note that you cannot specify any arguments to the terminal emulator; the entire string will be interpreted as the command name.
-</pp>
+</p>
 </dl>
 
 Gitbrowser will save your configured settings, as well as the (properly ordered) list of added repositories, and remember them until the next time you run Geany. The configuration is typically stored in a plain text file called `$(HOME)/.config/geany/plugins/gitbrowser/gitbrowser.conf`, where `$(HOME)` refers to your home directory.
 
-#Feedback#
+# Feedback #
 Please contact the author, Emil Brink (by e-mailing &lt;emil@obsession.se&gt;) regarding any bugs, comments, or thoughts about Gitbrowser. Enjoy.
