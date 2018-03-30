@@ -39,13 +39,12 @@
 
 GeanyPlugin         *geany_plugin;
 GeanyData           *geany_data;
-GeanyFunctions      *geany_functions;
 
 PLUGIN_VERSION_CHECK(147)
 
 PLUGIN_SET_INFO("Git Browser",
 		"A minimalistic browser for Git repositories. Implements a 'Quick Open' command to quickly jump to any file in a repository.",
-		"1.5.1",
+		"1.5.2",
 		"Emil Brink <emil@obsession.se>")
 
 enum
@@ -697,7 +696,7 @@ static void cmd_dir_terminal(GtkAction *action, gpointer user)
 		char	buf[1024];
 
 		tree_model_get_document_path(gitbrowser.model, &iter, buf, sizeof buf);
-		if(buf[0] != '\0' && argv[0] != NULL && argv[0] != '\0')
+		if(buf[0] != '\0' && argv[0] != NULL && argv[0][0] != '\0')
 			g_spawn_async(buf, argv, NULL, G_SPAWN_SEARCH_PATH, NULL, NULL, NULL, NULL);
 	}
 }
