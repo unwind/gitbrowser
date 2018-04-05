@@ -1290,7 +1290,7 @@ void repository_open_quick(Repository *repo)
 
 	if(qoi->dialog == NULL)
 	{
-		GtkWidget		*vbox, *label, *scwin, *title, *hbox;
+		GtkWidget		*vbox, *label, *scwin, *title, *hbox, *aa;
 		GtkCellRenderer         *cr;
 		GtkTreeViewColumn       *vc;
 		gchar			tbuf[64], *name;
@@ -1306,6 +1306,7 @@ void repository_open_quick(Repository *repo)
 		g_snprintf(tbuf, sizeof tbuf, _("Quick Open in Git Repository \"%s\""), name);
 
 		qoi->dialog = gtk_dialog_new_with_buttons(tbuf, NULL, GTK_DIALOG_MODAL, GTK_STOCK_OPEN, GTK_RESPONSE_OK, GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL, NULL);
+		aa = gtk_dialog_get_action_area(GTK_DIALOG(qoi->dialog));
 		gtk_dialog_set_default_response(GTK_DIALOG(qoi->dialog), GTK_RESPONSE_OK);
 		gtk_window_set_default_size(GTK_WINDOW(qoi->dialog), 600, 600);
 
@@ -1316,8 +1317,8 @@ void repository_open_quick(Repository *repo)
 		qoi->label = gtk_label_new("");
 		gtk_box_pack_start(GTK_BOX(hbox), qoi->label, TRUE, TRUE, 0);
 		open_quick_update_label(qoi);
-		gtk_box_pack_start(GTK_BOX(GTK_DIALOG(qoi->dialog)->action_area), hbox, TRUE, TRUE, 0);
-		gtk_box_reorder_child(GTK_BOX(GTK_DIALOG(qoi->dialog)->action_area), hbox, 0);
+		gtk_box_pack_start(GTK_BOX(aa), hbox, TRUE, TRUE, 0);
+		gtk_box_reorder_child(GTK_BOX(aa), hbox, 0);
 		gtk_widget_show_all(hbox);
 		gtk_widget_hide(qoi->spinner);
 
