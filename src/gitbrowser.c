@@ -199,7 +199,7 @@ static void add_dialog_open(const gchar *title)
 {
 	if(gitbrowser.add_dialog == NULL)
 	{
-		gitbrowser.add_dialog = gtk_file_chooser_dialog_new("", NULL, GTK_FILE_CHOOSER_ACTION_SELECT_FOLDER, GTK_STOCK_OK, GTK_RESPONSE_OK, GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL, NULL);
+		gitbrowser.add_dialog = gtk_file_chooser_dialog_new("", NULL, GTK_FILE_CHOOSER_ACTION_SELECT_FOLDER, "_OK", GTK_RESPONSE_OK, "_Cancel", GTK_RESPONSE_CANCEL, NULL);
 	}
 	gtk_window_set_title(GTK_WINDOW(gitbrowser.add_dialog), _(title));
 }
