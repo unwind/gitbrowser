@@ -1124,7 +1124,7 @@ static void open_quick_update_label(QuickOpenInfo *qoi)
 		g_snprintf(buf, sizeof buf, _("Showing all %lu files."), qoi->files_total);
 	else
 		g_snprintf(buf, sizeof buf, _("Showing %lu/%lu files."), qoi->files_total - qoi->files_filtered, qoi->files_total);
-	gtk_label_set(GTK_LABEL(qoi->label), buf);
+	gtk_label_set_text(GTK_LABEL(qoi->label), buf);
 }
 
 static gboolean cb_open_quick_filter_idle(gpointer user)
