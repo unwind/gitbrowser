@@ -480,7 +480,7 @@ static void cmd_repository_grep(GtkAction *action, gpointer user)
 
 		if(grep_dialog == NULL)
 		{
-			GtkWidget	*body, *vbox, *hbox, *table;
+			GtkWidget	*body, *vbox, *hbox, *grid;
 
 			grep_dialog = gtk_dialog_new_with_buttons("", NULL,
 					GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
@@ -498,18 +498,18 @@ static void cmd_repository_grep(GtkAction *action, gpointer user)
 			gtk_entry_set_activates_default(GTK_ENTRY(grep_entry), TRUE);
 			gtk_box_pack_start(GTK_BOX(hbox), grep_entry, TRUE, TRUE, 5);
 			gtk_box_pack_start(GTK_BOX(vbox), hbox, FALSE, FALSE, 5);
-			table = gtk_table_new(2, 3, FALSE);
+			grid = gtk_grid_new();
 			grep_opt_re = gtk_check_button_new_with_mnemonic("_Use regular expressions");
-			gtk_table_attach(GTK_TABLE(table), grep_opt_re, 0, 1, 0, 1, GTK_EXPAND | GTK_FILL, 0, 0, 0);
+			gtk_grid_attach(GTK_GRID(grid), grep_opt_re, 0, 0, 1, 1);
 			grep_opt_case = gtk_check_button_new_with_mnemonic("C_ase sensitive");
-			gtk_table_attach(GTK_TABLE(table), grep_opt_case, 1, 2, 0, 1, GTK_EXPAND | GTK_FILL, 0, 0, 0);
+			gtk_grid_attach(GTK_GRID(grid), grep_opt_case, 1, 0, 1, 1);
 			grep_opt_invert = gtk_check_button_new_with_mnemonic("_Invert");
-			gtk_table_attach(GTK_TABLE(table), grep_opt_invert, 0, 1, 1, 2, GTK_EXPAND | GTK_FILL, 0, 0, 0);
+			gtk_grid_attach(GTK_GRID(grid), grep_opt_invert, 0, 1, 1, 1);
 			grep_opt_word = gtk_check_button_new_with_mnemonic("Match only a whole _word");
-			gtk_table_attach(GTK_TABLE(table), grep_opt_word, 1, 2, 1, 2, GTK_EXPAND | GTK_FILL, 0, 0, 0);
+			gtk_grid_attach(GTK_GRID(grid), grep_opt_word, 1, 1, 1, 1);
 			grep_opt_clear = gtk_check_button_new_with_mnemonic("C_lear Messages");
-			gtk_table_attach(GTK_TABLE(table), grep_opt_clear, 0, 1, 2, 3, GTK_EXPAND | GTK_FILL, 0, 0, 0);
-			gtk_box_pack_start(GTK_BOX(vbox), table, TRUE, TRUE, 5);
+			gtk_grid_attach(GTK_GRID(grid), grep_opt_clear, 0, 2, 1, 1);
+			gtk_box_pack_start(GTK_BOX(vbox), grid, TRUE, TRUE, 5);
 			gtk_box_pack_start(GTK_BOX(body), vbox, FALSE, FALSE, 0);
 			gtk_widget_show_all(body);
 			gtk_window_set_default_size(GTK_WINDOW(grep_dialog), 384, -1);
