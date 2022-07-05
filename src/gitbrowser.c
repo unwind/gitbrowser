@@ -1767,7 +1767,7 @@ static void menu_popup_repositories(GdkEventButton *evt)
 	gtk_menu_shell_append(GTK_MENU_SHELL(gitbrowser.main_menu), gtk_separator_menu_item_new());
 	gtk_menu_shell_append(GTK_MENU_SHELL(gitbrowser.main_menu), gitbrowser.action_menu_items[CMD_REPOSITORY_REMOVE_ALL]);
 	gtk_widget_show_all(gitbrowser.main_menu);
-	gtk_menu_popup(GTK_MENU(gitbrowser.main_menu), NULL, NULL, NULL, NULL, evt->button, evt->time);
+	gtk_menu_popup_at_pointer(GTK_MENU(gitbrowser.main_menu), (GdkEvent *) evt);
 }
 
 static void menu_popup_repository(GdkEventButton *evt, gboolean is_separator)
@@ -1788,7 +1788,7 @@ static void menu_popup_repository(GdkEventButton *evt, gboolean is_separator)
 	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_separator_menu_item_new());
 	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.action_menu_items[CMD_REPOSITORY_REMOVE]);
 	gtk_widget_show_all(menu);
-	gtk_menu_popup(GTK_MENU(menu), NULL, NULL, NULL, NULL, evt->button, evt->time);
+	gtk_menu_popup_at_pointer(GTK_MENU(menu), (GdkEvent *) evt);
 }
 
 static void menu_popup_directory(GdkEventButton *evt)
@@ -1801,7 +1801,7 @@ static void menu_popup_directory(GdkEventButton *evt)
 	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.action_menu_items[CMD_DIR_EXPLORE]);
 	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.action_menu_items[CMD_DIR_TERMINAL]);
 	gtk_widget_show_all(menu);
-	gtk_menu_popup(GTK_MENU(menu), NULL, NULL, NULL, NULL, evt->button, evt->time);
+	gtk_menu_popup_at_pointer(GTK_MENU(menu), (GdkEvent *) evt);
 }
 
 static void menu_popup_file(GdkEventButton *evt)
@@ -1812,7 +1812,7 @@ static void menu_popup_file(GdkEventButton *evt)
 	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_separator_menu_item_new());
 	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.action_menu_items[CMD_FILE_COPY_NAME]);
 	gtk_widget_show_all(menu);
-	gtk_menu_popup(GTK_MENU(menu), NULL, NULL, NULL, NULL, evt->button, evt->time);
+	gtk_menu_popup_at_pointer(GTK_MENU(menu), (GdkEvent *) evt);
 }
 
 static gboolean evt_tree_button_press(GtkWidget *wid, GdkEventButton *evt, gpointer user)
