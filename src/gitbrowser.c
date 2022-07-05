@@ -2076,13 +2076,11 @@ GtkWidget * plugin_configure(GtkDialog *dlg)
 	frame = gtk_frame_new(_("Quick Open Filtering"));
 	grid = gtk_grid_new();
 	label = gtk_label_new(_("Always hide files matching (RE)"));
-	gtk_misc_set_alignment(GTK_MISC(label), 1.0f, 0.5f);
 	gtk_grid_attach(GTK_GRID(grid), label, 0, 0, 1, 1);
 	prefs_widgets.filter_re = gtk_entry_new();
 	gtk_grid_attach(GTK_GRID(grid), prefs_widgets.filter_re, 1, 0, 1, 1);
 	ui_hookup_widget(GTK_WIDGET(dlg), prefs_widgets.filter_re, CFG_QUICK_OPEN_HIDE_SRC);
 	label = gtk_label_new(_("Keyboard filter for max (ms)"));
-	gtk_misc_set_alignment(GTK_MISC(label), 1.0f, 0.5f);
 	gtk_grid_attach(GTK_GRID(grid), label, 0, 1, 1, 1);
 	prefs_widgets.filter_time = gtk_spin_button_new_with_range(10, 400, 5);
 	gtk_grid_attach(GTK_GRID(grid), prefs_widgets.filter_time, 1, 1, 1, 1);
