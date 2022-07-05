@@ -2068,26 +2068,26 @@ static void cb_configure_response(GtkDialog *dialog, gint response, gpointer use
 
 GtkWidget * plugin_configure(GtkDialog *dlg)
 {
-	GtkWidget		*vbox, *frame, *table, *label, *hbox;
+	GtkWidget		*vbox, *frame, *grid, *label, *hbox;
 	static PrefsWidgets	prefs_widgets;
 
 	vbox = gtk_vbox_new(FALSE, 0);
 
 	frame = gtk_frame_new(_("Quick Open Filtering"));
-	table = gtk_table_new(2, 2, FALSE);
+	grid = gtk_grid_new();
 	label = gtk_label_new(_("Always hide files matching (RE)"));
 	gtk_misc_set_alignment(GTK_MISC(label), 1.0f, 0.5f);
-	gtk_table_attach(GTK_TABLE(table), label, 0, 1, 0, 1,  GTK_FILL, 0, 5, 0);
+	gtk_grid_attach(GTK_GRID(grid), label, 0, 0, 1, 1);
 	prefs_widgets.filter_re = gtk_entry_new();
-	gtk_table_attach(GTK_TABLE(table), prefs_widgets.filter_re, 1, 2, 0, 1,  GTK_EXPAND | GTK_FILL, 0, 0, 0);
+	gtk_grid_attach(GTK_GRID(grid), prefs_widgets.filter_re, 1, 0, 1, 1);
 	ui_hookup_widget(GTK_WIDGET(dlg), prefs_widgets.filter_re, CFG_QUICK_OPEN_HIDE_SRC);
 	label = gtk_label_new(_("Keyboard filter for max (ms)"));
 	gtk_misc_set_alignment(GTK_MISC(label), 1.0f, 0.5f);
-	gtk_table_attach(GTK_TABLE(table), label, 0, 1, 1, 2,  GTK_FILL, 0, 5, 0);
+	gtk_grid_attach(GTK_GRID(grid), label, 0, 1, 1, 1);
 	prefs_widgets.filter_time = gtk_spin_button_new_with_range(10, 400, 5);
-	gtk_table_attach(GTK_TABLE(table), prefs_widgets.filter_time, 1, 2, 1, 2,  GTK_EXPAND | GTK_FILL, 0, 0, 0);
+	gtk_grid_attach(GTK_GRID(grid), prefs_widgets.filter_time, 1, 1, 1, 1);
 	ui_hookup_widget(GTK_WIDGET(dlg), prefs_widgets.filter_time, CFG_QUICK_OPEN_FILTER_MAX_TIME);
-	gtk_container_add(GTK_CONTAINER(frame), table);
+	gtk_container_add(GTK_CONTAINER(frame), grid);
 	gtk_box_pack_start(GTK_BOX(vbox), frame, TRUE, TRUE, 0);
 
 	hbox = gtk_hbox_new(FALSE, 0);
