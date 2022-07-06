@@ -484,9 +484,9 @@ static void cmd_repository_grep(GtkAction *action, gpointer user)
 
 			grep_dialog = gtk_dialog_new_with_buttons("", NULL,
 					GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
-					GTK_STOCK_OK,
+					("_Ok"),
 					GTK_RESPONSE_ACCEPT,
-					GTK_STOCK_CANCEL,
+					_("_Cancel"),
 					GTK_RESPONSE_REJECT,
 					NULL);
 			gtk_dialog_set_default_response(GTK_DIALOG(grep_dialog), GTK_RESPONSE_ACCEPT);
@@ -1305,7 +1305,7 @@ void repository_open_quick(Repository *repo)
 			name = repo->root_path;
 		g_snprintf(tbuf, sizeof tbuf, _("Quick Open in Git Repository \"%s\""), name);
 
-		qoi->dialog = gtk_dialog_new_with_buttons(tbuf, NULL, GTK_DIALOG_MODAL, GTK_STOCK_OPEN, GTK_RESPONSE_OK, GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL, NULL);
+		qoi->dialog = gtk_dialog_new_with_buttons(tbuf, NULL, GTK_DIALOG_MODAL, "_OK", GTK_RESPONSE_OK, "_Cancel", GTK_RESPONSE_CANCEL, NULL);
 		aa = gtk_dialog_get_action_area(GTK_DIALOG(qoi->dialog));
 		gtk_dialog_set_default_response(GTK_DIALOG(qoi->dialog), GTK_RESPONSE_OK);
 		gtk_window_set_default_size(GTK_WINDOW(qoi->dialog), 600, 600);
@@ -1357,7 +1357,7 @@ void repository_open_quick(Repository *repo)
 		gtk_box_pack_start(GTK_BOX(vbox), scwin, TRUE, TRUE, 0);
 		qoi->entry = gtk_entry_new();
 		gtk_entry_set_activates_default(GTK_ENTRY(qoi->entry), TRUE);
-		gtk_entry_set_icon_from_stock(GTK_ENTRY(qoi->entry), GTK_ENTRY_ICON_SECONDARY, GTK_STOCK_CLEAR);
+		gtk_entry_set_icon_from_icon_name(GTK_ENTRY(qoi->entry), GTK_ENTRY_ICON_SECONDARY, "edit-clear");
 		gtk_entry_set_icon_sensitive(GTK_ENTRY(qoi->entry), GTK_ENTRY_ICON_SECONDARY, FALSE);
 		g_signal_connect(G_OBJECT(qoi->entry), "changed", G_CALLBACK(evt_open_quick_entry_changed), qoi);
 		g_signal_connect(G_OBJECT(qoi->entry), "key-press-event", G_CALLBACK(evt_open_quick_entry_key_press), qoi);
