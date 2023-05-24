@@ -1,7 +1,7 @@
 /*
  * gitbrowser - A geany plugin to work with Git repositories.
  *
- * Copyright (C) 2011-2014 by Emil Brink <emil@obsession.se>.
+ * Copyright (C) 2011-2023 by Emil Brink <emil@obsession.se>.
  *
  * This file is part of gitbrowser.
  *
@@ -44,7 +44,7 @@ PLUGIN_VERSION_CHECK(147)
 
 PLUGIN_SET_INFO("Git Browser",
 		"A minimalistic browser for Git repositories. Implements a 'Quick Open' command to quickly jump to any file in a repository.",
-		"1.5.2",
+		"1.6.0",
 		"Emil Brink <emil@obsession.se>")
 
 enum
@@ -109,12 +109,12 @@ typedef struct
 	GtkTreeSelection	*selection;
 	gulong			files_total;
 	gulong			files_filtered;
-	GtkListStore		*store;			/* Only pointers into 'names' in here. */
+	GtkListStore	*store;			/* Only pointers into 'names' in here. */
 	GString			*names;			/* All names (files and paths), concatenated with '\0's in-between. */
 	GHashTable		*dedup;			/* Used during construction to de-duplicate names. Saves tons of memory. */
 	GArray			*array;			/* Used during construction to sort quickly. */
-	GtkTreeModel		*filter;		/* Filtered view of the quick open model. */
-	GtkTreeModel		*sort;			/* Sorted view of the filtered model. */
+	GtkTreeModel	*filter;		/* Filtered view of the quick open model. */
+	GtkTreeModel	*sort;			/* Sorted view of the filtered model. */
 	gchar			filter_text[128];	/* Cached so we don't need to query GtkEntry on each filter callback. */
 	gchar			filter_lower[128];	/* Lower-case version of the filter text. */
 	guint			filter_idle;
@@ -133,8 +133,7 @@ static struct
 	gint		page;
 	GtkTreeModel	*model;
 	GtkWidget	*view;
-	GtkAction	*actions[NUM_COMMANDS];
-	GtkWidget	*action_menu_items[NUM_COMMANDS];
+	GtkWidget	*cmd_menu_items[NUM_COMMANDS];
 	GtkWidget	*main_menu;
 	GtkTreePath	*click_path;
 	GRegex		*quick_open_hide;
@@ -159,6 +158,50 @@ typedef struct
 	GtkWidget	*filter_time;
 	GtkWidget	*terminal_cmd;
 } PrefsWidgets;
+
+static void cmd_repository_add(GtkWidget *this, gpointer user);
+static void cmd_repository_add_multiple(GtkWidget *this, gpointer user);
+static void cmd_repository_add_from_document(GtkWidget *this, gpointer user);
+static void cmd_repository_add_separator(GtkWidget *this, gpointer user);
+static void cmd_repository_remove(GtkWidget *this, gpointer user);
+static void cmd_repository_remove_all(GtkWidget *this, gpointer user);
+static void cmd_repository_open_quick(GtkWidget *this, gpointer user);
+static void cmd_repository_open_quick_from_document(GtkWidget *this, gpointer user);
+static void cmd_repository_grep(GtkWidget *this, gpointer user);
+static void cmd_repository_refresh(GtkWidget *this, gpointer user);
+static void cmd_repository_move_up(GtkWidget *this, gpointer user);
+static void cmd_repository_move_down(GtkWidget *this, gpointer user);
+static void cmd_dir_expand(GtkWidget *this, gpointer user);
+static void cmd_dir_collapse(GtkWidget *this, gpointer user);
+static void cmd_dir_explore(GtkWidget *this, gpointer user);
+static void cmd_dir_terminal(GtkWidget *this, gpointer user);
+static void cmd_file_open(GtkWidget *this, gpointer user);
+static void cmd_file_copy_name(GtkWidget *this, gpointer user);
+
+static const struct {
+	const char	*label;
+	const char	*help;
+	void (*activate_handler)(GtkWidget *this, gpointer user);
+} command_data[] = {
+	{ _("Add..."), _("Add a new repository based on a filesystem location."), cmd_repository_add },
+	{ _("Add Multiple..."), _("Add multiple repositories by searching a filesystem location recursively."), cmd_repository_add_multiple },
+	{ _("Add from Document"), _("Add a new repository from the current document's location."), cmd_repository_add_from_document },
+	{ _("Add Separator"), _("Add a separator line between repositories."), cmd_repository_add_separator },
+	{ _("Remove"), _("Removes this repository from the tree view, forgetting all about it."), cmd_repository_remove },
+	{ _("Remove All"), _("Removes all known repositories from the plugin's browser tree."), cmd_repository_remove_all },
+	{ _("Quick Open ..."), _("Opens a document anywhere in the repository, with filtering."), cmd_repository_open_quick },
+	{ _("Quick Open from Document ..."), _("Opens the Quick Open dialog for the current docuḿent's repository"), cmd_repository_open_quick_from_document },
+	{ _("Grep ..."), _("Opens a dialog accepting an expression which is sent to 'git grep', to search the repo's files."), cmd_repository_grep },
+	{ _("Refresh"), _("Reloads the list of files contained in the repository"), cmd_repository_refresh },
+	{ _("Move Up"), _("Moves a repository up in the list."), cmd_repository_move_up },
+	{ _("Move Down"), _("Moves a repository down in the list."), cmd_repository_move_down },
+	{ _("Expand All"), _("Expands a directory node."), cmd_dir_expand },
+	{ _("Collapse All"), _("Collapses a directory node."), cmd_dir_collapse },
+	{ _("Explore ..."), _("Opens the directory containing this item, using the system's default file browser."), cmd_dir_explore },
+	{ _("Terminal ..."), _("Opens a terminal (command line) window here."), cmd_dir_terminal },
+	{ _("Open"), _("Opens a file as a new document, or focuses the document if already opened."), cmd_file_open },
+	{ _("Copy Name"), _("Copies the full name (with path) of this file to the clipboard."), cmd_file_copy_name },
+};
 
 /* -------------------------------------------------------------------------------------------------------------- */
 
@@ -192,9 +235,6 @@ gboolean subprocess_run(const gchar* working_dir, gchar **argv, gchar **env, gch
 
 /* -------------------------------------------------------------------------------------------------------------- */
 
-/* Trickery to make a single function both register/create an action, and implement that action's action. */
-#define	CMD_INIT(n, l, tt, s)	if(action == NULL) { GtkAction **me = (GtkAction **) user; *me = gtk_action_new(n, _(l), _(tt), s); return; }
-
 static void add_dialog_open(const gchar *title)
 {
 	if(gitbrowser.add_dialog == NULL)
@@ -204,27 +244,22 @@ static void add_dialog_open(const gchar *title)
 	gtk_window_set_title(GTK_WINDOW(gitbrowser.add_dialog), _(title));
 }
 
-static void cmd_repository_add(GtkAction *action, gpointer user)
+static void cmd_repository_add(GtkWidget *this, gpointer user)
 {
-	gint	response;
-
-	CMD_INIT("repository-add", _("Add..."), _("Add a new repository based on a filesystem location."), GTK_STOCK_ADD)
 	add_dialog_open("Add Repository");
-	response = gtk_dialog_run(GTK_DIALOG(gitbrowser.add_dialog));
+	const gint response = gtk_dialog_run(GTK_DIALOG(gitbrowser.add_dialog));
 	gtk_widget_hide(gitbrowser.add_dialog);
 	if(response == GTK_RESPONSE_OK)
 	{
-		gchar	*path = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(gitbrowser.add_dialog));
+		gchar * const path = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(gitbrowser.add_dialog));
 
 		if(path != NULL)
 		{
-			gchar	*git;
-
 			/* Not already loaded? */
 			if(repository_find_by_path(path) == NULL)
 			{
 				/* Does it even have a ".git" directory in it? */
-				git = g_build_filename(path, ".git", NULL);
+				char * const git = g_build_filename(path, ".git", NULL);
 				if(g_file_test(git, G_FILE_TEST_IS_DIR))
 				{
 					Repository	*repo = repository_new(path);
@@ -277,13 +312,10 @@ static void add_multiple(const char *root)
 	g_dir_close(dir);
 }
 
-static void cmd_repository_add_multiple(GtkAction *action, gpointer user)
+static void cmd_repository_add_multiple(GtkWidget *this, gpointer user)
 {
-	gint	response;
-
-	CMD_INIT("repository-add-multiple", _("Add Multiple..."), _("Add multiple repositories by searching a filesystem location recursively."), GTK_STOCK_ADD)
 	add_dialog_open("Add Multiple Repositories");
-	response = gtk_dialog_run(GTK_DIALOG(gitbrowser.add_dialog));
+	const gint response = gtk_dialog_run(GTK_DIALOG(gitbrowser.add_dialog));
 	gtk_widget_hide(gitbrowser.add_dialog);
 	if(response == GTK_RESPONSE_OK)
 	{
@@ -293,11 +325,9 @@ static void cmd_repository_add_multiple(GtkAction *action, gpointer user)
 	}
 }
 
-static void cmd_repository_add_from_document(GtkAction *action, gpointer user)
+static void cmd_repository_add_from_document(GtkWidget *this, gpointer user)
 {
 	GeanyDocument	*doc;
-
-	CMD_INIT("repository-add-from-document", _("Add from Document"), _("Add a new repository from the current document's location."), GTK_STOCK_ADD)
 
 	if((doc = document_get_current()) != NULL)
 	{
@@ -336,18 +366,14 @@ static void cmd_repository_add_from_document(GtkAction *action, gpointer user)
 	}
 }
 
-static void cmd_repository_add_separator(GtkAction *action, gpointer user)
+static void cmd_repository_add_separator(GtkWidget *this, gpointer user)
 {
-	CMD_INIT("repository-add-separator", _("Add Separator"), _("Add a separator line between repositories."), NULL)
-
 	tree_model_build_separator(gitbrowser.model);
 }
 
-static void cmd_repository_remove(GtkAction *action, gpointer user)
+static void cmd_repository_remove(GtkWidget *this, gpointer user)
 {
 	GtkTreeIter	iter;
-
-	CMD_INIT("repository-remove", _("Remove"), _("Removes this repository from the tree view, forgetting all about it."), GTK_STOCK_DELETE);
 
 	if(gtk_tree_model_get_iter(gitbrowser.model, &iter, gitbrowser.click_path))
 	{
@@ -355,11 +381,9 @@ static void cmd_repository_remove(GtkAction *action, gpointer user)
 	}
 }
 
-static void cmd_repository_remove_all(GtkAction *action, gpointer user)
+static void cmd_repository_remove_all(GtkWidget *this, gpointer user)
 {
 	GtkTreeIter	iter, child;
-
-	CMD_INIT("repository-remove-all", _("Remove All"), _("Removes all known repositories from the plugin's browser tree."), GTK_STOCK_CLEAR);
 
 	if(gtk_tree_model_get_iter_first(gitbrowser.model, &iter))
 	{
@@ -370,12 +394,10 @@ static void cmd_repository_remove_all(GtkAction *action, gpointer user)
 	}
 }
 
-static void cmd_repository_open_quick(GtkAction *action, gpointer user)
+static void cmd_repository_open_quick(GtkWidget *this, gpointer user)
 {
 	GtkTreeIter	iter;
 	Repository	*repo = NULL;
-
-	CMD_INIT("repository-open-quick", _("Quick Open ..."), _("Opens a document anywhere in the repository, with filtering."), GTK_STOCK_OPEN);
 
 	if(gtk_tree_model_get_iter(gitbrowser.model, &iter, gitbrowser.click_path))
 	{
@@ -391,12 +413,10 @@ static void cmd_repository_open_quick(GtkAction *action, gpointer user)
 	repository_open_quick(repo);
 }
 
-static void cmd_repository_open_quick_from_document(GtkAction *action, gpointer user)
+static void cmd_repository_open_quick_from_document(GtkWidget *this, gpointer user)
 {
 	GeanyDocument	*doc = document_get_current();
 	Repository	*repo;
-
-	CMD_INIT("repository-open-quick-from-document", _("Quick Open from Document ..."), _("Opens the Quick Open dialog for the current docuḿent's repository"), GTK_STOCK_FIND);
 
 	if(doc == NULL)
 		return;
@@ -458,13 +478,9 @@ static void grep_get_word(GtkWidget *entry)
 	}
 }
 
-static void cmd_repository_grep(GtkAction *action, gpointer user)
+static void cmd_repository_grep(GtkWidget *this, gpointer user)
 {
-	const Repository	*repo;
-
-	CMD_INIT("grep", _("Grep ..."), _("Opens a dialog accepting an expression which is sent to 'git grep', to search the repo's files."), GTK_STOCK_FIND);
-
-	repo = get_repository();
+	const Repository *repo = get_repository();
 	if(repo != NULL)
 	{
 		static GtkWidget	*grep_dialog = NULL;
@@ -491,8 +507,8 @@ static void cmd_repository_grep(GtkAction *action, gpointer user)
 					NULL);
 			gtk_dialog_set_default_response(GTK_DIALOG(grep_dialog), GTK_RESPONSE_ACCEPT);
 			body = gtk_dialog_get_content_area(GTK_DIALOG(grep_dialog));
-			vbox = gtk_vbox_new(FALSE, 0);
-			hbox = gtk_hbox_new(FALSE, 0);
+			vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+			hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
 			gtk_box_pack_start(GTK_BOX(hbox), gtk_label_new("Grep for:"), FALSE, FALSE, 0);
 			grep_entry = gtk_entry_new();
 			gtk_entry_set_activates_default(GTK_ENTRY(grep_entry), TRUE);
@@ -569,12 +585,10 @@ static void cmd_repository_grep(GtkAction *action, gpointer user)
 	}
 }
 
-static void cmd_repository_refresh(GtkAction *action, gpointer user)
+static void cmd_repository_refresh(GtkWidget *this, gpointer user)
 {
 	GtkTreeIter	iter, child;
 	Repository	*repo = NULL;
-
-	CMD_INIT("repository-refresh", _("Refresh"), _("Reloads the list of files contained in the repository"), GTK_STOCK_REFRESH);
 
 	if(gtk_tree_model_get_iter(gitbrowser.model, &iter, gitbrowser.click_path))
 	{
@@ -600,11 +614,9 @@ static void cmd_repository_refresh(GtkAction *action, gpointer user)
 	}
 }
 
-static void cmd_repository_move_up(GtkAction *action, gpointer user)
+static void cmd_repository_move_up(GtkWidget *this, gpointer user)
 {
 	GtkTreeIter	here;
-
-	CMD_INIT("repository-move-up", _("Move Up"), _("Moves a repository up in the list."), GTK_STOCK_GO_UP);
 
 	if(gtk_tree_model_get_iter(GTK_TREE_MODEL(gitbrowser.model), &here, gitbrowser.click_path))
 	{
@@ -621,11 +633,9 @@ static void cmd_repository_move_up(GtkAction *action, gpointer user)
 	}
 }
 
-static void cmd_repository_move_down(GtkAction *action, gpointer user)
+static void cmd_repository_move_down(GtkWidget *this, gpointer user)
 {
 	GtkTreeIter	here;
-
-	CMD_INIT("repository-move-down", _("Move Down"), _("Moves a repository down in the list."), GTK_STOCK_GO_DOWN);
 
 	if(gtk_tree_model_get_iter(GTK_TREE_MODEL(gitbrowser.model), &here, gitbrowser.click_path))
 	{
@@ -640,25 +650,19 @@ static void cmd_repository_move_down(GtkAction *action, gpointer user)
 	}
 }
 
-static void cmd_dir_expand(GtkAction *action, gpointer user)
+static void cmd_dir_expand(GtkWidget *this, gpointer user)
 {
-	CMD_INIT("dir-expand", _("Expand All"), _("Expands a directory node."), GTK_STOCK_GO_FORWARD);
-
 	gtk_tree_view_expand_row(GTK_TREE_VIEW(gitbrowser.view), gitbrowser.click_path, TRUE);
 }
 
-static void cmd_dir_collapse(GtkAction *action, gpointer user)
+static void cmd_dir_collapse(GtkWidget *this, gpointer user)
 {
-	CMD_INIT("dir-collapse", _("Collapse All"), _("Collapses a directory node."), GTK_STOCK_GO_BACK);
-
 	gtk_tree_view_collapse_row(GTK_TREE_VIEW(gitbrowser.view), gitbrowser.click_path);
 }
 
-static void cmd_dir_explore(GtkAction *action, gpointer user)
+static void cmd_dir_explore(GtkWidget *this, gpointer user)
 {
 	GtkTreeIter	iter;
-
-	CMD_INIT("file-explore", _("Explore ..."), _("Opens the directory containing this item, using the system's default file browser."), GTK_STOCK_DIRECTORY);
 
 	if(gtk_tree_model_get_iter(gitbrowser.model, &iter, gitbrowser.click_path))
 	{
@@ -668,17 +672,17 @@ static void cmd_dir_explore(GtkAction *action, gpointer user)
 		if(buf[0] != '\0')
 		{
 			msgwin_msg_add(COLOR_BLACK, -1, NULL, " showing '%s'", buf);
-			gtk_show_uri(NULL, buf, GDK_CURRENT_TIME, NULL);
+			gtk_show_uri_on_window(NULL, buf, GDK_CURRENT_TIME, NULL);
 		}
 	}
 }
 
-static void cmd_dir_terminal(GtkAction *action, gpointer user)
+static void cmd_dir_terminal(GtkWidget *this, gpointer user)
 {
 	GtkTreeIter	iter;
 	gchar		*argv[2] = { NULL, NULL };
 
-	CMD_INIT("dir-terminal", _("Terminal ..."), _("Opens a terminal (command line) window here."), NULL);
+	msgwin_msg_add(COLOR_BLACK, -1, NULL, "Gitbrowser: Trying to open terminal");
 
 	/* If the configured terminal command starts with a dollar, treat it as an environment variable reference. */
 	argv[0] = gitbrowser.terminal_cmd;
@@ -701,18 +705,14 @@ static void cmd_dir_terminal(GtkAction *action, gpointer user)
 	}
 }
 
-static void cmd_file_open(GtkAction *action, gpointer user)
+static void cmd_file_open(GtkWidget *this, gpointer user)
 {
-	CMD_INIT("file-open", _("Open"), _("Opens a file as a new document, or focuses the document if already opened."), GTK_STOCK_OPEN);
-
 	tree_model_open_document(gitbrowser.model, gitbrowser.click_path);
 }
 
-static void cmd_file_copy_name(GtkAction *action, gpointer user)
+static void cmd_file_copy_name(GtkWidget *this, gpointer user)
 {
 	GtkTreeIter	iter;
-
-	CMD_INIT("file-copy-name", _("Copy Name"), _("Copies the full name (with path) of this file to the clipboard."), NULL);
 
 	if(gtk_tree_model_get_iter(gitbrowser.model, &iter, gitbrowser.click_path))
 	{
@@ -727,36 +727,13 @@ static void cmd_file_copy_name(GtkAction *action, gpointer user)
 	}
 }
 
-void init_commands(GtkAction **actions, GtkWidget **menu_items)
+static void init_commands(GtkWidget **menu_items)
 {
-	typedef void (*ActivateOrCreate)(GtkAction *action, gpointer user);
-	const ActivateOrCreate funcs[] = {
-		cmd_repository_add,
-		cmd_repository_add_multiple,
-		cmd_repository_add_from_document,
-		cmd_repository_add_separator,
-		cmd_repository_remove,
-		cmd_repository_remove_all,
-		cmd_repository_open_quick,
-		cmd_repository_open_quick_from_document,
-		cmd_repository_grep,
-		cmd_repository_refresh,
-		cmd_repository_move_up,
-		cmd_repository_move_down,
-		cmd_dir_expand,
-		cmd_dir_collapse,
-		cmd_dir_explore,
-		cmd_dir_terminal,
-		cmd_file_open,
-		cmd_file_copy_name,
-	};
-	size_t	i;
-
-	for(i = 0; i < sizeof funcs / sizeof *funcs; i++)
+	for(size_t i = 0; i < sizeof command_data / sizeof *command_data; ++i)
 	{
-		funcs[i](NULL, &actions[i]);
-		g_signal_connect(G_OBJECT(actions[i]), "activate", G_CALLBACK(funcs[i]), NULL);
-		menu_items[i] = gtk_action_create_menu_item(actions[i]);
+		menu_items[i] = gtk_menu_item_new_with_label(command_data[i].label);
+		g_signal_connect(G_OBJECT(menu_items[i]), "activate", G_CALLBACK(command_data[i].activate_handler), NULL);
+		g_object_ref(menu_items[i]);
 		gtk_widget_show(menu_items[i]);
 	}
 }
@@ -1290,7 +1267,7 @@ void repository_open_quick(Repository *repo)
 
 	if(qoi->dialog == NULL)
 	{
-		GtkWidget		*vbox, *label, *scwin, *title, *hbox, *aa;
+		GtkWidget		*vbox, *label, *scwin, *title, *hbox;
 		GtkCellRenderer         *cr;
 		GtkTreeViewColumn       *vc;
 		gchar			tbuf[64], *name;
@@ -1306,25 +1283,22 @@ void repository_open_quick(Repository *repo)
 		g_snprintf(tbuf, sizeof tbuf, _("Quick Open in Git Repository \"%s\""), name);
 
 		qoi->dialog = gtk_dialog_new_with_buttons(tbuf, NULL, GTK_DIALOG_MODAL, "_OK", GTK_RESPONSE_OK, "_Cancel", GTK_RESPONSE_CANCEL, NULL);
-		aa = gtk_dialog_get_action_area(GTK_DIALOG(qoi->dialog));
 		gtk_dialog_set_default_response(GTK_DIALOG(qoi->dialog), GTK_RESPONSE_OK);
 		gtk_window_set_default_size(GTK_WINDOW(qoi->dialog), 600, 600);
 
-		/* Pack some custom stuff into the action area, but first into a hbox for tidyness. */
-		hbox = gtk_hbox_new(FALSE, 0);
+		vbox = ui_dialog_vbox_new(GTK_DIALOG(qoi->dialog));
+		label = gtk_label_new(_("Select one or more document(s) to open. Type to filter filenames."));
+		gtk_box_pack_start(GTK_BOX(vbox), label, FALSE, FALSE, 0);
+		/* Create a label showing filtering status. */
+		hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
 		qoi->spinner = gtk_spinner_new();
 		gtk_box_pack_start(GTK_BOX(hbox), qoi->spinner, FALSE, FALSE, 0);
 		qoi->label = gtk_label_new("");
 		gtk_box_pack_start(GTK_BOX(hbox), qoi->label, TRUE, TRUE, 0);
 		open_quick_update_label(qoi);
-		gtk_box_pack_start(GTK_BOX(aa), hbox, TRUE, TRUE, 0);
-		gtk_box_reorder_child(GTK_BOX(aa), hbox, 0);
+		gtk_box_pack_start(GTK_BOX(vbox), hbox, FALSE, FALSE, 0);
 		gtk_widget_show_all(hbox);
 		gtk_widget_hide(qoi->spinner);
-
-		vbox = ui_dialog_vbox_new(GTK_DIALOG(qoi->dialog));
-		label = gtk_label_new(_("Select one or more document(s) to open. Type to filter filenames."));
-		gtk_box_pack_start(GTK_BOX(vbox), label, FALSE, FALSE, 0);
 		qoi->filter = gtk_tree_model_filter_new(GTK_TREE_MODEL(qoi->store), NULL);
 		gtk_tree_model_filter_set_visible_column(GTK_TREE_MODEL_FILTER(qoi->filter), QO_VISIBLE);	/* Filter on the boolean column. */
 		qoi->sort = gtk_tree_model_sort_new_with_model(qoi->filter);
@@ -1758,14 +1732,14 @@ static GtkWidget * menu_popup_create(void)
 static void menu_popup_repositories(GdkEventButton *evt)
 {
 	gitbrowser.main_menu = menu_popup_create();
-	gtk_menu_shell_append(GTK_MENU_SHELL(gitbrowser.main_menu), gitbrowser.action_menu_items[CMD_REPOSITORY_OPEN_QUICK_FROM_DOCUMENT]);
+	gtk_menu_shell_append(GTK_MENU_SHELL(gitbrowser.main_menu), gitbrowser.cmd_menu_items[CMD_REPOSITORY_OPEN_QUICK_FROM_DOCUMENT]);
 	gtk_menu_shell_append(GTK_MENU_SHELL(gitbrowser.main_menu), gtk_separator_menu_item_new());
-	gtk_menu_shell_append(GTK_MENU_SHELL(gitbrowser.main_menu), gitbrowser.action_menu_items[CMD_REPOSITORY_ADD]);
-	gtk_menu_shell_append(GTK_MENU_SHELL(gitbrowser.main_menu), gitbrowser.action_menu_items[CMD_REPOSITORY_ADD_MULTIPLE]);
-	gtk_menu_shell_append(GTK_MENU_SHELL(gitbrowser.main_menu), gitbrowser.action_menu_items[CMD_REPOSITORY_ADD_FROM_DOCUMENT]);
-	gtk_menu_shell_append(GTK_MENU_SHELL(gitbrowser.main_menu), gitbrowser.action_menu_items[CMD_REPOSITORY_ADD_SEPARATOR]);
+	gtk_menu_shell_append(GTK_MENU_SHELL(gitbrowser.main_menu), gitbrowser.cmd_menu_items[CMD_REPOSITORY_ADD]);
+	gtk_menu_shell_append(GTK_MENU_SHELL(gitbrowser.main_menu), gitbrowser.cmd_menu_items[CMD_REPOSITORY_ADD_MULTIPLE]);
+	gtk_menu_shell_append(GTK_MENU_SHELL(gitbrowser.main_menu), gitbrowser.cmd_menu_items[CMD_REPOSITORY_ADD_FROM_DOCUMENT]);
+	gtk_menu_shell_append(GTK_MENU_SHELL(gitbrowser.main_menu), gitbrowser.cmd_menu_items[CMD_REPOSITORY_ADD_SEPARATOR]);
 	gtk_menu_shell_append(GTK_MENU_SHELL(gitbrowser.main_menu), gtk_separator_menu_item_new());
-	gtk_menu_shell_append(GTK_MENU_SHELL(gitbrowser.main_menu), gitbrowser.action_menu_items[CMD_REPOSITORY_REMOVE_ALL]);
+	gtk_menu_shell_append(GTK_MENU_SHELL(gitbrowser.main_menu), gitbrowser.cmd_menu_items[CMD_REPOSITORY_REMOVE_ALL]);
 	gtk_widget_show_all(gitbrowser.main_menu);
 	gtk_menu_popup_at_pointer(GTK_MENU(gitbrowser.main_menu), (GdkEvent *) evt);
 }
@@ -1776,17 +1750,17 @@ static void menu_popup_repository(GdkEventButton *evt, gboolean is_separator)
 
 	if(!is_separator)
 	{
-		gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.action_menu_items[CMD_REPOSITORY_OPEN_QUICK]);
-		gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.action_menu_items[CMD_REPOSITORY_GREP]);
-		gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.action_menu_items[CMD_DIR_EXPLORE]);
-		gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.action_menu_items[CMD_DIR_TERMINAL]);
+		gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.cmd_menu_items[CMD_REPOSITORY_OPEN_QUICK]);
+		gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.cmd_menu_items[CMD_REPOSITORY_GREP]);
+		gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.cmd_menu_items[CMD_DIR_EXPLORE]);
+		gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.cmd_menu_items[CMD_DIR_TERMINAL]);
 		gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_separator_menu_item_new());
-		gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.action_menu_items[CMD_REPOSITORY_REFRESH]);
+		gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.cmd_menu_items[CMD_REPOSITORY_REFRESH]);
 	}
-	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.action_menu_items[CMD_REPOSITORY_MOVE_UP]);
-	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.action_menu_items[CMD_REPOSITORY_MOVE_DOWN]);
+	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.cmd_menu_items[CMD_REPOSITORY_MOVE_UP]);
+	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.cmd_menu_items[CMD_REPOSITORY_MOVE_DOWN]);
 	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_separator_menu_item_new());
-	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.action_menu_items[CMD_REPOSITORY_REMOVE]);
+	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.cmd_menu_items[CMD_REPOSITORY_REMOVE]);
 	gtk_widget_show_all(menu);
 	gtk_menu_popup_at_pointer(GTK_MENU(menu), (GdkEvent *) evt);
 }
@@ -1795,11 +1769,13 @@ static void menu_popup_directory(GdkEventButton *evt)
 {
 	GtkWidget	*menu = menu_popup_create();
 
-	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.action_menu_items[CMD_DIR_EXPAND]);
-	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.action_menu_items[CMD_DIR_COLLAPSE]);
+	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.cmd_menu_items[CMD_DIR_EXPAND]);
+	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.cmd_menu_items[CMD_DIR_COLLAPSE]);
 	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_separator_menu_item_new());
-	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.action_menu_items[CMD_DIR_EXPLORE]);
-	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.action_menu_items[CMD_DIR_TERMINAL]);
+	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.cmd_menu_items[CMD_DIR_EXPLORE]);
+	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.cmd_menu_items[CMD_DIR_TERMINAL]);
+	gtk_widget_set_sensitive(gitbrowser.cmd_menu_items[CMD_DIR_TERMINAL], TRUE);
+	gtk_widget_set_sensitive(menu, TRUE);
 	gtk_widget_show_all(menu);
 	gtk_menu_popup_at_pointer(GTK_MENU(menu), (GdkEvent *) evt);
 }
@@ -1808,9 +1784,9 @@ static void menu_popup_file(GdkEventButton *evt)
 {
 	GtkWidget	*menu = menu_popup_create();
 
-	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.action_menu_items[CMD_FILE_OPEN]);
+	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.cmd_menu_items[CMD_FILE_OPEN]);
 	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_separator_menu_item_new());
-	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.action_menu_items[CMD_FILE_COPY_NAME]);
+	gtk_menu_shell_append(GTK_MENU_SHELL(menu), gitbrowser.cmd_menu_items[CMD_FILE_COPY_NAME]);
 	gtk_widget_show_all(menu);
 	gtk_menu_popup_at_pointer(GTK_MENU(menu), (GdkEvent *) evt);
 }
@@ -1853,7 +1829,9 @@ static gboolean evt_tree_button_press(GtkWidget *wid, GdkEventButton *evt, gpoin
 					gtk_tree_view_expand_row(GTK_TREE_VIEW(gitbrowser.view), gitbrowser.click_path, TRUE);
 			}
 			else
-				gtk_action_activate(gitbrowser.actions[CMD_FILE_OPEN]);
+			{
+				gtk_menu_item_activate(GTK_MENU_ITEM(gitbrowser.cmd_menu_items[CMD_FILE_OPEN]));
+			}
 		}
 		else if(evt->type == GDK_BUTTON_PRESS && evt->button == 3)
 		{
@@ -1889,8 +1867,8 @@ static gboolean cb_treeview_separator(GtkTreeModel *model, GtkTreeIter *iter, gp
 GtkWidget * tree_view_new(GtkTreeModel *model)
 {
 	GtkWidget		*view;
-        GtkCellRenderer         *cr;
-        GtkTreeViewColumn       *vc;
+	GtkCellRenderer         *cr;
+	GtkTreeViewColumn       *vc;
 
 	view = gtk_tree_view_new_with_model(model);
 
@@ -1958,9 +1936,7 @@ void tree_view_set_expanded(GtkTreeView *view, const gchar *paths)
 
 	if((tokens = g_strsplit(paths, ",", -1)) != NULL)
 	{
-		gint	i;
-
-		for(i = 0; tokens[i] != NULL; i++)
+		for(gsize i = 0; tokens[i] != NULL; i++)
 		{
 			GtkTreePath	*path;
 
@@ -2010,10 +1986,10 @@ static gboolean cb_key_group_callback(guint key_id)
 	switch(key_id)
 	{
 	case KEY_REPOSITORY_OPEN_QUICK_FROM_DOCUMENT:
-		gtk_action_activate(gitbrowser.actions[CMD_REPOSITORY_OPEN_QUICK_FROM_DOCUMENT]);
+		gtk_menu_item_activate(GTK_MENU_ITEM(gitbrowser.cmd_menu_items[CMD_REPOSITORY_OPEN_QUICK_FROM_DOCUMENT]));
 		return TRUE;
 	case KEY_REPOSITORY_GREP:
-		gtk_action_activate(gitbrowser.actions[CMD_REPOSITORY_GREP]);
+		gtk_menu_item_activate(GTK_MENU_ITEM(gitbrowser.cmd_menu_items[CMD_REPOSITORY_GREP]));
 		break;
 	}
 	return FALSE;
@@ -2024,7 +2000,7 @@ void plugin_init(GeanyData *geany_data)
 	GtkWidget	*scwin;
 	gchar		*dir;
 
-	init_commands(gitbrowser.actions, gitbrowser.action_menu_items);
+	init_commands(gitbrowser.cmd_menu_items);
 
 	gitbrowser.model = tree_model_new();
 	gitbrowser.view = tree_view_new(gitbrowser.model);
@@ -2035,8 +2011,8 @@ void plugin_init(GeanyData *geany_data)
 	gitbrowser.add_dialog = NULL;
 
 	gitbrowser.key_group = plugin_set_key_group(geany_plugin, MNEMONIC_NAME, NUM_KEYS, cb_key_group_callback);
-	keybindings_set_item(gitbrowser.key_group, KEY_REPOSITORY_OPEN_QUICK_FROM_DOCUMENT, NULL, GDK_KEY_o, GDK_MOD1_MASK | GDK_SHIFT_MASK, "repository-open-quick-from-document", _("Quick Open from Document"), gitbrowser.action_menu_items[CMD_REPOSITORY_OPEN_QUICK_FROM_DOCUMENT]);
-	keybindings_set_item(gitbrowser.key_group, KEY_REPOSITORY_GREP, NULL, GDK_KEY_g, GDK_MOD1_MASK | GDK_SHIFT_MASK, "repository-grep", _("Grep Repository"), gitbrowser.action_menu_items[CMD_REPOSITORY_GREP]);
+	keybindings_set_item(gitbrowser.key_group, KEY_REPOSITORY_OPEN_QUICK_FROM_DOCUMENT, NULL, GDK_KEY_o, GDK_MOD1_MASK | GDK_SHIFT_MASK, "repository-open-quick-from-document", _("Quick Open from Document"), gitbrowser.cmd_menu_items[CMD_REPOSITORY_OPEN_QUICK_FROM_DOCUMENT]);
+	keybindings_set_item(gitbrowser.key_group, KEY_REPOSITORY_GREP, NULL, GDK_KEY_g, GDK_MOD1_MASK | GDK_SHIFT_MASK, "repository-grep", _("Grep Repository"), gitbrowser.cmd_menu_items[CMD_REPOSITORY_GREP]);
 
 	dir = g_strconcat(geany->app->configdir, G_DIR_SEPARATOR_S, "plugins", G_DIR_SEPARATOR_S, MNEMONIC_NAME, NULL);
 	utils_mkdir(dir, TRUE);
@@ -2071,7 +2047,7 @@ GtkWidget * plugin_configure(GtkDialog *dlg)
 	GtkWidget		*vbox, *frame, *grid, *label, *hbox;
 	static PrefsWidgets	prefs_widgets;
 
-	vbox = gtk_vbox_new(FALSE, 0);
+	vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
 
 	frame = gtk_frame_new(_("Quick Open Filtering"));
 	grid = gtk_grid_new();
@@ -2088,7 +2064,7 @@ GtkWidget * plugin_configure(GtkDialog *dlg)
 	gtk_container_add(GTK_CONTAINER(frame), grid);
 	gtk_box_pack_start(GTK_BOX(vbox), frame, TRUE, TRUE, 0);
 
-	hbox = gtk_hbox_new(FALSE, 0);
+	hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
 	label = gtk_label_new("Terminal command");
 	gtk_box_pack_start(GTK_BOX(hbox), label, FALSE, FALSE, 0);
 	prefs_widgets.terminal_cmd = gtk_entry_new();

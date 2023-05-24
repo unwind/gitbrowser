@@ -4,7 +4,7 @@
 
 BASENAME=gitbrowser
 
-CFLAGS=`pkg-config --cflags geany` -fPIC -Wall -pedantic -g
+CFLAGS=`pkg-config --cflags geany` -fPIC -Wall -pedantic -g -std=c99
 LDLIBS=`pkg-config --libs geany`
 
 PLUGINDIR=`pkg-config --variable=libdir geany`/geany
