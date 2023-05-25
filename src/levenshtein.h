@@ -1,7 +1,7 @@
 /*
  * Levenshtein distance computation, using GLib, for strings.
  *
- * Copyright (C) 2013-2014 by Emil Brink <emil@obsession.se>.
+ * Copyright (C) 2013-2023 by Emil Brink <emil@obsession.se>.
  *
  * This file is part of gitbrowser.
  *

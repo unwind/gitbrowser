@@ -4,7 +4,7 @@
  * Implemented directly from the Wikipedia pseudo-code at
  * <http://en.wikipedia.org/wiki/Levenshtein_distance#Computing_Levenshtein_distance>.
  *
- * Copyright (C) 2013-2014 by Emil Brink <emil@obsession.se>.
+ * Copyright (C) 2013-2023 by Emil Brink <emil@obsession.se>.
  *
  * This file is part of gitbrowser.
  *
@@ -44,18 +44,16 @@ void levenshtein_begin_half(LDState *state, const gchar *s1)
 
 static guint16 compute(LDState *state, const gchar *s1, guint16 i, guint16 len1, const gchar *s2, guint16 j, guint16 len2)
 {
-	guint16	cost, d1, d2, d3, dist;
-
-	if(len1 == 0)
+	if (len1 == 0)
 		return len2;
-	if(len2 == 0)
+	if (len2 == 0)
 		return len1;
 		
-	cost = (s1[i] != s2[j]);
-	d1 = compute(state, s1, i + 1, len1 - 1, s2, j, len2) + 1;
-	d2 = compute(state, s1, i,     len1,     s2, j + 1, len2 - 1) + 1;
-	d3 = compute(state, s1, i + 1, len1 - 1, s2, j + 1, len2 - 1) + cost;
-	dist = MIN(d1, MIN(d2, d3));
+	const guint16 cost = (s1[i] != s2[j]);
+	const guint16 d1 = compute(state, s1, i + 1, len1 - 1, s2, j, len2) + 1;
+	const guint16 d2 = compute(state, s1, i,     len1,     s2, j + 1, len2 - 1) + 1;
+	const guint16 d3 = compute(state, s1, i + 1, len1 - 1, s2, j + 1, len2 - 1) + cost;
+	const guint16 dist = MIN(d1, MIN(d2, d3));
 	
 	return dist;
 }
@@ -76,4 +74,5 @@ guint16 levenshtein_compute_half(LDState *state, const gchar *s2)
 
 void levenshtein_end(LDState *state)
 {
+	(void) state;	// Nothing to do, here.
 }
