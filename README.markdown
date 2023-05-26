@@ -180,5 +180,15 @@ Note that you cannot specify any arguments to the terminal emulator; the entire 
 
 Gitbrowser will save your configured settings, as well as the (properly ordered) list of added repositories, and remember them until the next time you run Geany. The configuration is typically stored in a plain text file called `$(HOME)/.config/geany/plugins/gitbrowser/gitbrowser.conf`, where `$(HOME)` refers to your home directory.
 
+
+# Weaknesses #
+This plugin was not created with the intent of making a "complete" Git integration like you would expect in a full-blown IDE.
+It is designed to be fantastically minimal, and still require the user to do actual Git operations elsewhere.
+The main benefit is being able to treat projects tracked with Git as Geany projects, and browse all the files in the editor easily.
+The author is a big fan of the "quick open" way of navigating, so that was a primary goal as well and it works rather nicely.
+
+Maybe the most major weakness is that Gitbrowser does not support submodules (nested repositories), which were unknown to the author at the time.
+
+
 # Feedback #
 Please contact the author, Emil Brink (by e-mailing &lt;emil@obsession.se&gt;) regarding any bugs, comments, or thoughts about Gitbrowser. Enjoy.
