@@ -114,7 +114,7 @@ typedef struct
 
 typedef struct
 {
-	gchar		root_path[1024];		/* Root path, this is where the ".git/" subdirectory is. */
+	gchar			root_path[1024];	/* Root path, this is where the ".git/" subdirectory is. */
 	QuickOpenInfo	quick_open;			/* State tracking for the "Quick Open" command's dialog. */
 } Repository;
 
@@ -199,7 +199,7 @@ static const struct {
 
 Repository *	repository_new(const gchar *root_path);
 Repository *	repository_find_by_path(const gchar *path);
-void		repository_open_quick(Repository *repo);
+void			repository_open_quick(Repository *repo);
 
 static void	open_quick_reset_filter(void);
 
