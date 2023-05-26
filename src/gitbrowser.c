@@ -37,16 +37,6 @@
 #define	PATH_SEPARATOR_CHAR		':'
 #define	REPO_IS_SEPARATOR		"-"
 
-GeanyPlugin         *geany_plugin;
-GeanyData           *geany_data;
-
-PLUGIN_VERSION_CHECK(147)
-
-PLUGIN_SET_INFO("Git Browser",
-		"A minimalistic browser for Git repositories. Implements a 'Quick Open' command to quickly jump to any file in a repository.",
-		"1.6.0",
-		"Emil Brink <emil@obsession.se>")
-
 enum
 {
 	CMD_REPOSITORY_ADD = 0,
@@ -150,6 +140,8 @@ static struct
 	gchar		*quick_open_hide_src;
 	gint		quick_open_filter_max_time;	/* In milliseconds. */
 	gchar		*terminal_cmd;
+
+	GeanyPlugin	*plugin;
 } gitbrowser;
 
 typedef struct
@@ -1989,7 +1981,7 @@ static gboolean cb_key_group_callback(guint key_id)
 	return FALSE;
 }
 
-void plugin_init(GeanyData *geany_data)
+static gboolean gitbrowser_init(GeanyPlugin *plugin, gpointer pdata)
 {
 	GtkWidget	*scwin;
 	gchar		*dir;
@@ -2004,11 +1996,11 @@ void plugin_init(GeanyData *geany_data)
 	gitbrowser.terminal_cmd = "gnome-terminal";
 	gitbrowser.add_dialog = NULL;
 
-	gitbrowser.key_group = plugin_set_key_group(geany_plugin, MNEMONIC_NAME, NUM_KEYS, cb_key_group_callback);
+	gitbrowser.key_group = plugin_set_key_group(gitbrowser.plugin, MNEMONIC_NAME, NUM_KEYS, cb_key_group_callback);
 	keybindings_set_item(gitbrowser.key_group, KEY_REPOSITORY_OPEN_QUICK_FROM_DOCUMENT, NULL, GDK_KEY_o, GDK_MOD1_MASK | GDK_SHIFT_MASK, "repository-open-quick-from-document", _("Quick Open from Document"), gitbrowser.cmd_menu_items[CMD_REPOSITORY_OPEN_QUICK_FROM_DOCUMENT]);
 	keybindings_set_item(gitbrowser.key_group, KEY_REPOSITORY_GREP, NULL, GDK_KEY_g, GDK_MOD1_MASK | GDK_SHIFT_MASK, "repository-grep", _("Grep Repository"), gitbrowser.cmd_menu_items[CMD_REPOSITORY_GREP]);
 
-	dir = g_strconcat(geany->app->configdir, G_DIR_SEPARATOR_S, "plugins", G_DIR_SEPARATOR_S, MNEMONIC_NAME, NULL);
+	dir = g_strconcat(gitbrowser.plugin->geany_data->app->configdir, G_DIR_SEPARATOR_S, "plugins", G_DIR_SEPARATOR_S, MNEMONIC_NAME, NULL);
 	utils_mkdir(dir, TRUE);
 	gitbrowser.config_filename = g_strconcat(dir, G_DIR_SEPARATOR_S, MNEMONIC_NAME ".conf", NULL);
 	g_free(dir);
@@ -2024,7 +2016,9 @@ void plugin_init(GeanyData *geany_data)
 	gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scwin), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
 	gtk_container_add(GTK_CONTAINER(scwin), gitbrowser.view);
 	gtk_widget_show_all(scwin);
-	gitbrowser.page = gtk_notebook_append_page(GTK_NOTEBOOK(geany->main_widgets->sidebar_notebook), scwin, gtk_label_new("Git Browser"));
+	gitbrowser.page = gtk_notebook_append_page(GTK_NOTEBOOK(gitbrowser.plugin->geany_data->main_widgets->sidebar_notebook), scwin, gtk_label_new("Git Browser"));
+
+	return TRUE;
 }
 
 static void cb_configure_response(GtkDialog *dialog, gint response, gpointer user)
@@ -2036,7 +2030,7 @@ static void cb_configure_response(GtkDialog *dialog, gint response, gpointer use
 	}
 }
 
-GtkWidget * plugin_configure(GtkDialog *dlg)
+static GtkWidget * gitbrowser_configure(GeanyPlugin *plugin, GtkDialog *dialog, gpointer pdata)
 {
 	GtkWidget		*vbox, *frame, *grid, *label, *hbox;
 	static PrefsWidgets	prefs_widgets;
@@ -2049,12 +2043,12 @@ GtkWidget * plugin_configure(GtkDialog *dlg)
 	gtk_grid_attach(GTK_GRID(grid), label, 0, 0, 1, 1);
 	prefs_widgets.filter_re = gtk_entry_new();
 	gtk_grid_attach(GTK_GRID(grid), prefs_widgets.filter_re, 1, 0, 1, 1);
-	ui_hookup_widget(GTK_WIDGET(dlg), prefs_widgets.filter_re, CFG_QUICK_OPEN_HIDE_SRC);
+	ui_hookup_widget(GTK_WIDGET(dialog), prefs_widgets.filter_re, CFG_QUICK_OPEN_HIDE_SRC);
 	label = gtk_label_new(_("Keyboard filter for max (ms)"));
 	gtk_grid_attach(GTK_GRID(grid), label, 0, 1, 1, 1);
 	prefs_widgets.filter_time = gtk_spin_button_new_with_range(10, 400, 5);
 	gtk_grid_attach(GTK_GRID(grid), prefs_widgets.filter_time, 1, 1, 1, 1);
-	ui_hookup_widget(GTK_WIDGET(dlg), prefs_widgets.filter_time, CFG_QUICK_OPEN_FILTER_MAX_TIME);
+	ui_hookup_widget(GTK_WIDGET(dialog), prefs_widgets.filter_time, CFG_QUICK_OPEN_FILTER_MAX_TIME);
 	gtk_container_add(GTK_CONTAINER(frame), grid);
 	gtk_box_pack_start(GTK_BOX(vbox), frame, TRUE, TRUE, 0);
 
@@ -2063,23 +2057,40 @@ GtkWidget * plugin_configure(GtkDialog *dlg)
 	gtk_box_pack_start(GTK_BOX(hbox), label, FALSE, FALSE, 0);
 	prefs_widgets.terminal_cmd = gtk_entry_new();
 	gtk_box_pack_start(GTK_BOX(hbox), prefs_widgets.terminal_cmd, TRUE, TRUE, 5);
-	ui_hookup_widget(GTK_WIDGET(dlg), prefs_widgets.terminal_cmd, CFG_TERMINAL_CMD);
+	ui_hookup_widget(GTK_WIDGET(dialog), prefs_widgets.terminal_cmd, CFG_TERMINAL_CMD);
 	gtk_box_pack_start(GTK_BOX(vbox), hbox, FALSE, FALSE, 5);
 
-	stash_group_display(gitbrowser.prefs, GTK_WIDGET(dlg));
+	stash_group_display(gitbrowser.prefs, GTK_WIDGET(dialog));
 
 	gtk_widget_show_all(vbox);
 
-	g_signal_connect(G_OBJECT(dlg), "response", G_CALLBACK(cb_configure_response), &prefs_widgets);
+	g_signal_connect(G_OBJECT(dialog), "response", G_CALLBACK(cb_configure_response), &prefs_widgets);
 
 	return vbox;
 }
 
-void plugin_cleanup(void)
+static void gitbrowser_cleanup(GeanyPlugin *plugin, gpointer pdata)
 {
 	repository_save_all(gitbrowser.model);
-	gtk_notebook_remove_page(GTK_NOTEBOOK(geany->main_widgets->sidebar_notebook), gitbrowser.page);
+	gtk_notebook_remove_page(GTK_NOTEBOOK(gitbrowser.plugin->geany_data->main_widgets->sidebar_notebook), gitbrowser.page);
 	stash_group_free(gitbrowser.prefs);
 	g_free(gitbrowser.config_filename);
 	g_hash_table_destroy(gitbrowser.repositories);
+}
+
+/* -------------------------------------------------------------------------------------------------------------- */
+
+G_MODULE_EXPORT void geany_load_module(GeanyPlugin *plugin)
+{
+	plugin->info->name = "Git Browser";
+	plugin->info->description = "A minimalistic browser for Git repositories. Implements a 'Quick Open' command to quickly jump to any file in a repository.";
+	plugin->info->version = "1.6.0";
+	plugin->info->author = "Emil Brink <emil@obsession.se>";
+
+	plugin->funcs->init = gitbrowser_init;
+	plugin->funcs->cleanup = gitbrowser_cleanup;
+	plugin->funcs->configure = gitbrowser_configure;
+	gitbrowser.plugin = plugin;
+
+	GEANY_PLUGIN_REGISTER(plugin, 225);
 }
